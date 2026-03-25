@@ -118,12 +118,27 @@ def inject_global_styles():
           background: linear-gradient(180deg, #2d67ac 0%, #1f4b84 100%) !important;
           color: #ffffff !important;
           border-color: #1f4b84 !important;
+          text-shadow: 0 1px 1px rgba(12, 24, 45, 0.18);
+        }
+
+        .stApp .stButton > button[kind="primary"] *,
+        .stApp .stDownloadButton > button[kind="primary"] * {
+          color: #ffffff !important;
+          fill: #ffffff !important;
         }
 
         .stApp [data-baseweb="select"] * ,
         .stApp [data-baseweb="input"] * ,
         .stApp [data-baseweb="textarea"] * {
           color: var(--ink) !important;
+        }
+
+        .stApp .stCaption,
+        .stApp [data-testid="stCaptionContainer"],
+        .stApp .stCaption p,
+        .stApp [data-testid="stCaptionContainer"] p {
+          color: #4a5d79 !important;
+          font-weight: 600 !important;
         }
 
         .stApp [data-testid="stAppViewContainer"] > .main .block-container {
@@ -548,61 +563,68 @@ def render_app_header():
     )
 
 
-@st.cache_data(show_spinner="檢查 GitHub 更新中…", ttl=300)
+@st.cache_data(show_spinner=False, ttl=300)
 def get_update_status() -> dict:
     return fetch_latest_release()
 
 
-def render_update_panel():
+@st.dialog("發現可安裝的新版本")
+def render_update_dialog(status: dict):
+    latest_version = status.get("latest_version") or "新版"
+    st.markdown(
+        f"""
+        目前版本：`v{APP_VERSION}`  
+        偵測到最新版：`{latest_version}`
+        """
+    )
+    st.write("要不要現在就下載並啟動安裝程式？如果你先不更新，這次開啟期間我就先不再打擾你。")
+
+    release_body = (status.get("body") or "").strip()
+    if release_body:
+        with st.expander("查看本次更新內容", expanded=False):
+            st.markdown(release_body)
+
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("稍後再說", key="dismiss_update_dialog_btn", use_container_width=True):
+            st.session_state["dismissed_update_version"] = latest_version
+            st.rerun()
+    with c2:
+        if st.button("立刻下載安裝", key="confirm_update_dialog_btn", type="primary", use_container_width=True):
+            try:
+                with st.spinner("正在下載更新安裝包並準備啟動，請稍候…"):
+                    saved_path = download_and_launch_update(
+                        status.get("download_url", ""),
+                        status.get("asset_name", "CompanyQueryToolSetup.exe"),
+                    )
+                st.session_state["dismissed_update_version"] = latest_version
+                st.success(f"已開始下載並啟動更新安裝包：{saved_path}")
+            except Exception as exc:
+                st.error(f"更新下載失敗：{exc}")
+
+    release_page = status.get("release_page", "")
+    if release_page:
+        st.link_button("查看版本說明", release_page, use_container_width=True)
+
+
+def maybe_prompt_for_update():
     config = load_update_config()
-    with st.expander("版本與更新", expanded=False):
-        st.caption(f"目前版本：v{APP_VERSION}")
+    if not update_is_configured(config):
+        return
 
-        if not update_is_configured(config):
-            st.info("更新功能已預留完成，等你提供 GitHub repo 後，只要填入 update_config.json 就能啟用。")
-            return
+    status = get_update_status()
+    if status.get("error"):
+        return
+    if not status.get("asset_found"):
+        return
+    if not status.get("update_available"):
+        return
 
-        if st.button("檢查是否有新版", key="check_updates_btn", use_container_width=True):
-            get_update_status.clear()
+    latest_version = status.get("latest_version") or ""
+    if st.session_state.get("dismissed_update_version") == latest_version:
+        return
 
-        status = get_update_status()
-        if status.get("error"):
-            st.warning(status["error"])
-            return
-
-        latest_version = status.get("latest_version") or "—"
-        st.caption(f"GitHub 最新版：{latest_version}")
-
-        if not status.get("asset_found"):
-            st.warning(f"找不到安裝包資產：{status.get('asset_name')}")
-            if status.get("release_page"):
-                st.markdown(f"[前往 Release 頁面]({status['release_page']})")
-            return
-
-        if status.get("update_available"):
-            st.success(f"有新版本可更新：{latest_version}")
-            st.caption("更新檔約 100MB，按下後可能需要等待 30 到 90 秒；若安裝器沒有自動跳出，可直接使用右側手動下載。")
-            ucol1, ucol2 = st.columns(2)
-            with ucol1:
-                if st.button("下載並啟動更新", key="run_update_btn", type="primary", use_container_width=True):
-                    try:
-                        with st.spinner("正在下載更新安裝包並準備啟動，請稍候…"):
-                            saved_path = download_and_launch_update(
-                                status.get("download_url", ""),
-                                status.get("asset_name", "CompanyQueryToolSetup.exe"),
-                            )
-                        st.success(f"已開始下載並啟動更新安裝包：{saved_path}")
-                        st.info("若安裝器沒有出現在前景，請查看工作列，或使用右側的手動下載按鈕。")
-                    except Exception as exc:
-                        st.error(f"更新下載失敗：{exc}")
-            with ucol2:
-                st.link_button(
-                    "手動下載更新安裝包",
-                    status.get("download_url", ""),
-                    use_container_width=True,
-                )
-        else:
-            st.success("目前已是最新版本。")
+    render_update_dialog(status)
 
 
 def _display_value(value) -> str:
@@ -742,7 +764,7 @@ def render_dividend_html_table(divs: list[dict], year: int, period_label: str):
 
 inject_global_styles()
 render_app_header()
-render_update_panel()
+maybe_prompt_for_update()
 
 # ── 預熱快取 ──────────────────────────────────────────────────────────────────
 @st.cache_resource(show_spinner="載入 ISIN 清單…")
