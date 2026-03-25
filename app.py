@@ -1292,25 +1292,7 @@ with tab_single:
         label_visibility="collapsed",
     )
 
-    c1, c2, c3 = st.columns([2.4, 1, 1.3])
-    with c1:
-        if search_mode == "🔢 統一編號":
-            uid_input = st.text_input(
-                "統一編號（8碼）",
-                placeholder="例：34051920",
-                max_chars=8,
-            )
-        elif search_mode == "📈 股票代號":
-            stock_input = st.text_input(
-                "股票代號（4-6碼）",
-                placeholder="例：1519",
-                max_chars=6,
-            )
-        else:
-            name_input = st.text_input(
-                "公司名稱（含部分名稱）",
-                placeholder="例：台達電子",
-            )
+    c2, c3 = st.columns([1, 1.3])
     with c2:
         year = st.selectbox(
             "查詢年度",
@@ -1318,29 +1300,52 @@ with tab_single:
         )
     with c3:
         use_custom_price_date = st.checkbox("自訂股價日期", value=False)
-        selected_price_date = st.date_input(
-            "股價日期",
-            value=default_price_query_date(year),
-            min_value=date_cls(year, 1, 1),
-            max_value=date_cls(year, 12, 31),
-            disabled=not use_custom_price_date,
-        )
-        if use_custom_price_date:
-            aligned_price_date = get_previous_trading_day(selected_price_date, year)
-            if aligned_price_date != selected_price_date:
-                st.caption(f"若所選日期不是交易日，系統會自動往前對齊到最近交易日：{aligned_price_date.strftime('%Y/%m/%d')}")
+
+    with st.form("single_query_form", clear_on_submit=False):
+        c1f, c3f = st.columns([2.4, 1.3])
+        with c1f:
+            if search_mode == "🔢 統一編號":
+                uid_input = st.text_input(
+                    "統一編號（8碼）",
+                    placeholder="例：34051920",
+                    max_chars=8,
+                )
+            elif search_mode == "📈 股票代號":
+                stock_input = st.text_input(
+                    "股票代號（4-6碼）",
+                    placeholder="例：1519",
+                    max_chars=6,
+                )
             else:
-                st.caption("已選擇交易日，查詢時會直接使用這一天。")
-        else:
-            st.caption("未指定時預設抓該年度 12/31；若當天非交易日，會自動往前對齊最近交易日。")
+                name_input = st.text_input(
+                    "公司名稱（含部分名稱）",
+                    placeholder="例：台達電子",
+                )
+            st.caption("輸入完成後可直接按 Enter 開始查詢。")
+        with c3f:
+            selected_price_date = st.date_input(
+                "股價日期",
+                value=default_price_query_date(year),
+                min_value=date_cls(year, 1, 1),
+                max_value=date_cls(year, 12, 31),
+                disabled=not use_custom_price_date,
+            )
+            if use_custom_price_date:
+                aligned_price_date = get_previous_trading_day(selected_price_date, year)
+                if aligned_price_date != selected_price_date:
+                    st.caption(f"若所選日期不是交易日，系統會自動往前對齊到最近交易日：{aligned_price_date.strftime('%Y/%m/%d')}")
+                else:
+                    st.caption("已選擇交易日，查詢時會直接使用這一天。")
+            else:
+                st.caption("未指定時預設抓該年度 12/31；若當天非交易日，會自動往前對齊最近交易日。")
+
+        search_btn = st.form_submit_button("🔍 立即查詢", type="primary", use_container_width=True)
 
     actual_price_date = (
         selected_price_date
         if use_custom_price_date
         else default_price_query_date(year)
     )
-
-    search_btn = st.button("🔍 立即查詢", type="primary", use_container_width=True)
 
     if search_btn:
         clear_single_result()
