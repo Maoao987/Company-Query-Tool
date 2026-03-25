@@ -6,4 +6,5 @@ __pycache__/
 dist/
 vendor/
 wheelhouse/
+_local_archive/
 Company_Query_Tool_Setup_FIXED.zip

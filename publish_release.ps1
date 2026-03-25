@@ -91,7 +91,7 @@ $($fileLines -join "`r`n")
 function Invoke-BuildArtifacts {
     powershell -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "sync_version.ps1")
     & "C:\Users\aschy\AppData\Local\Programs\Inno Setup 6\ISCC.exe" (Join-Path $PSScriptRoot "CompanyQueryToolSetup.iss")
-    cmd /c "cd /d $PSScriptRoot && if exist $PSScriptRoot\..\Company_Query_Tool_Setup_FIXED.zip del /f /q $PSScriptRoot\..\Company_Query_Tool_Setup_FIXED.zip && tar.exe -a -c -f $PSScriptRoot\..\Company_Query_Tool_Setup_FIXED.zip app.py company_query.py findbiz_scraper.py Install.bat install.ps1 pdf_report.py requirements.txt start.bat start_hidden.vbs update_manager.py update_config.json version.txt web_snapshot.py CompanyQueryToolSetup.iss version.iss.inc sync_version.ps1 vendor wheelhouse"
+    cmd /c "cd /d $PSScriptRoot && if not exist dist mkdir dist && if exist $PSScriptRoot\dist\Company_Query_Tool_Setup.zip del /f /q $PSScriptRoot\dist\Company_Query_Tool_Setup.zip && tar.exe -a -c -f $PSScriptRoot\dist\Company_Query_Tool_Setup.zip app.py company_query.py findbiz_scraper.py Install.bat install.ps1 pdf_report.py requirements.txt start.bat start_hidden.vbs update_manager.py update_config.json version.txt web_snapshot.py CompanyQueryToolSetup.iss version.iss.inc sync_version.ps1 vendor wheelhouse"
 }
 
 $currentVersion = Get-CurrentVersion
@@ -137,7 +137,7 @@ if (-not $SkipPush) {
 if (-not $SkipRelease) {
     $tag = "v$targetVersion"
     $exePath = Join-Path $PSScriptRoot "dist\CompanyQueryToolSetup.exe"
-    $zipPath = Join-Path $PSScriptRoot "..\Company_Query_Tool_Setup_FIXED.zip"
+    $zipPath = Join-Path $PSScriptRoot "dist\Company_Query_Tool_Setup.zip"
 
     gh release view $tag --repo $Repo | Out-Null 2>$null
     if ($LASTEXITCODE -eq 0) {

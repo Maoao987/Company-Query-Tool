@@ -4,6 +4,7 @@
 
 - Current version: `1.1.3`
 - GitHub repo: `https://github.com/Maoao987/Company-Query-Tool`
+- Canonical local workspace: `C:\Users\aschy\BingXHunter\Company-Query-Tool`
 - Current release strategy:
   - same-version hotfix: overwrite existing release assets
   - new version release: bump patch version and publish a new release
@@ -101,6 +102,14 @@ or
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\publish_release.ps1 -Mode release
 ```
+
+## Local folder layout
+
+- Keep the actual source repo in:
+  - `C:\Users\aschy\BingXHunter\Company-Query-Tool`
+- Keep old experiments, staging files, test logs, and one-off artifacts only in:
+  - `C:\Users\aschy\BingXHunter\Company-Query-Tool\_local_archive`
+- Do not put temporary staging copies back under a second nested `CompanyQueryTool\_inspect_company_query_tool` path again, because that old layout caused path confusion during development and release work.
 
 ## Files you will touch often
 

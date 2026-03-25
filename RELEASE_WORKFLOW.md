@@ -1,5 +1,11 @@
 # Release Workflow
 
+Run all commands from:
+
+```powershell
+C:\Users\aschy\BingXHunter\Company-Query-Tool
+```
+
 ## Same-version fix
 
 Use this when the version number should stay the same and the existing GitHub Release assets should be replaced.
