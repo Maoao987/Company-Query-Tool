@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+*.pyo
+*.log
+.venv/
+dist/
+vendor/
+wheelhouse/
+Company_Query_Tool_Setup_FIXED.zip
