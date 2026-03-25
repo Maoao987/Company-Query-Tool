@@ -307,6 +307,9 @@ def get_stock_price_on_or_before(stock_no: str, market: str, target_date: date_c
 def get_stock_price_source_info(stock_no: str, market: str, year: int, date_str: str) -> tuple[str, str]:
     if not stock_no or not market:
         return "", ""
+    month_param = "".join(str(date_str or "").split("/"))[:6]
+    if len(month_param) != 6:
+        month_param = f"{year}12"
     if market == "TWSE":
         return (
             "TWSE 個股日成交資訊（官方查詢頁）",
@@ -314,13 +317,13 @@ def get_stock_price_source_info(stock_no: str, market: str, year: int, date_str:
         )
     if market == "TPEX":
         return (
-            "TPEX 上櫃股票每日收盤行情(不含定價)（官方查詢頁）",
-            f"{TPEX_STOCK_DAY_PAGE_URL}?code={stock_no}",
+            "TPEX 上櫃個股歷史行情（官方查詢頁）",
+            f"https://www.tpex.org.tw/zh-tw/mainboard/trading/info/stock-pricing.html?code={stock_no}&date={month_param}",
         )
     if market == "ESB":
         return (
             "TPEX 興櫃個股歷史行情（成交均價，官方查詢頁）",
-            f"{ESB_STOCK_DAY_PAGE_URL}?code={stock_no}",
+            f"{ESB_STOCK_DAY_PAGE_URL}?code={stock_no}&date={month_param}",
         )
     return "", ""
 
