@@ -42,7 +42,7 @@ TWSE_STOCK_DAY_URL = "https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY"
 TPEX_STOCK_DAY_URL = "https://www.tpex.org.tw/www/zh-tw/afterTrading/tradingStock"
 ESB_STOCK_DAY_URL = "https://www.tpex.org.tw/www/zh-tw/emerging/historical"
 TWSE_STOCK_DAY_PAGE_URL = "https://accessibility.twse.com.tw/zh/trading/historical/stock-day.html"
-TPEX_STOCK_DAY_PAGE_URL = "https://www.tpex.org.tw/zh-tw/mainboard/trading/info/stock-pricing.html"
+TPEX_STOCK_DAY_PAGE_URL = "https://www.tpex.org.tw/zh-tw/mainboard/trading/info/mi-pricing.html"
 ESB_STOCK_DAY_PAGE_URL = "https://www.tpex.org.tw/zh-tw/esb/trading/info/stock-pricing.html"
 TWSE_COMPANY_PROFILE_URL = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
 TPEX_COMPANY_PROFILE_URL = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
@@ -314,7 +314,7 @@ def get_stock_price_source_info(stock_no: str, market: str, year: int, date_str:
         )
     if market == "TPEX":
         return (
-            "TPEX 上櫃股票每日收盤行情（官方查詢頁）",
+            "TPEX 上櫃股票每日收盤行情(不含定價)（官方查詢頁）",
             TPEX_STOCK_DAY_PAGE_URL,
         )
     if market == "ESB":
