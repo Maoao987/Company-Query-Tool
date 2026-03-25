@@ -114,7 +114,8 @@ def inject_global_styles():
         }
 
         .stApp .stButton > button[kind="primary"],
-        .stApp .stDownloadButton > button[kind="primary"] {
+        .stApp .stDownloadButton > button[kind="primary"],
+        .stApp .stFormSubmitButton > button {
           background: linear-gradient(180deg, #2d67ac 0%, #1f4b84 100%) !important;
           color: #ffffff !important;
           border-color: #1f4b84 !important;
@@ -122,9 +123,15 @@ def inject_global_styles():
         }
 
         .stApp .stButton > button[kind="primary"] *,
-        .stApp .stDownloadButton > button[kind="primary"] * {
+        .stApp .stDownloadButton > button[kind="primary"] *,
+        .stApp .stFormSubmitButton > button,
+        .stApp .stFormSubmitButton > button *,
+        .stApp .stFormSubmitButton > button p,
+        .stApp .stFormSubmitButton > button span,
+        .stApp .stFormSubmitButton > button div {
           color: #ffffff !important;
           fill: #ffffff !important;
+          opacity: 1 !important;
         }
 
         .stApp [data-baseweb="select"] * ,
