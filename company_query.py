@@ -312,8 +312,8 @@ def get_stock_price_source_info(stock_no: str, market: str, year: int, date_str:
         month_param = f"{year}12"
     if market == "TWSE":
         return (
-            "TWSE 個股日成交資訊（官方查詢頁）",
-            TWSE_STOCK_DAY_PAGE_URL,
+            "TWSE 個股日成交資訊（官方報表頁）",
+            f"{TWSE_STOCK_DAY_URL}?date={month_param}01&stockNo={stock_no}&response=html",
         )
     if market == "TPEX":
         return (

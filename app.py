@@ -1321,18 +1321,9 @@ with tab_single:
         label_visibility="collapsed",
     )
 
-    c2, c3 = st.columns([1, 1.3])
-    with c2:
-        year = st.selectbox(
-            "查詢年度",
-            options=list(range(datetime.now().year - 1, datetime.now().year - 11, -1)),
-        )
-    with c3:
-        use_custom_price_date = st.checkbox("自訂股價日期", value=False)
-
     with st.form("single_query_form", clear_on_submit=False):
-        c1f, c3f = st.columns([2.4, 1.3])
-        with c1f:
+        c_query, c_setting = st.columns([1.85, 1.15])
+        with c_query:
             if search_mode == "🔢 統一編號":
                 uid_input = st.text_input(
                     "統一編號（8碼）",
@@ -1351,7 +1342,12 @@ with tab_single:
                     placeholder="例：台達電子",
                 )
             st.caption("輸入完成後可直接按 Enter 開始查詢。")
-        with c3f:
+        with c_setting:
+            year = st.selectbox(
+                "查詢年度",
+                options=list(range(datetime.now().year - 1, datetime.now().year - 11, -1)),
+            )
+            use_custom_price_date = st.checkbox("自訂股價日期", value=False)
             selected_price_date = st.date_input(
                 "股價日期",
                 value=default_price_query_date(year),
