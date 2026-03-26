@@ -42,12 +42,12 @@ TWSE_STOCK_DAY_URL = "https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY"
 TPEX_STOCK_DAY_URL = "https://www.tpex.org.tw/www/zh-tw/afterTrading/tradingStock"
 ESB_STOCK_DAY_URL = "https://www.tpex.org.tw/www/zh-tw/emerging/historical"
 TWSE_STOCK_DAY_PAGE_URL = "https://accessibility.twse.com.tw/zh/trading/historical/stock-day.html"
-TPEX_STOCK_DAY_PAGE_URL = "https://www.tpex.org.tw/zh-tw/mainboard/trading/info/mi-pricing.html"
+TPEX_STOCK_DAY_PAGE_URL = "https://www.tpex.org.tw/zh-tw/mainboard/trading/info/stock-pricing.html"
 ESB_STOCK_DAY_PAGE_URL = "https://www.tpex.org.tw/zh-tw/esb/trading/info/stock-pricing.html"
 TWSE_COMPANY_PROFILE_URL = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
 TPEX_COMPANY_PROFILE_URL = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
 ESB_COMPANY_PROFILE_URL = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_R"
-URL_EXPORT_COLUMNS = {"股價資料來源網址", "登記資料來源網址", "列印連結"}
+URL_EXPORT_COLUMNS = {"股價資料來源網址", "股價友善查詢網址", "登記資料來源網址", "列印連結"}
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 1. ISIN 清單（判斷上市/上櫃）
@@ -376,6 +376,16 @@ def get_stock_price_source_info(stock_no: str, market: str, year: int, date_str:
     return "", ""
 
 
+def get_stock_query_page_info(market: str) -> tuple[str, str]:
+    if market == "TWSE":
+        return ("TWSE 友善查詢頁", TWSE_STOCK_DAY_PAGE_URL)
+    if market == "TPEX":
+        return ("TPEX 上櫃資料獲取來源", TPEX_STOCK_DAY_PAGE_URL)
+    if market == "ESB":
+        return ("TPEX 興櫃資料獲取來源", ESB_STOCK_DAY_PAGE_URL)
+    return "", ""
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # 3. 除權息資訊（yfinance）
 # ══════════════════════════════════════════════════════════════════════════════
@@ -441,6 +451,7 @@ RESULT_COLUMNS = [
     "股價查詢日期",
     "實際收盤日期", "收盤價(元)",
     "股價資料來源說明", "股價資料來源網址",
+    "股價友善查詢說明", "股價友善查詢網址",
     # ── 除權息
     "除權息查詢區間",
     "除權息筆數", "除權息明細",
@@ -615,8 +626,11 @@ def query_by_uid(unified_id: str, year: int, price_date=None) -> dict:
         result["年底收盤日期"]   = date_str
         result["年底收盤價(元)"] = price
         price_source_label, price_source_url = get_stock_price_source_info(stock_no, market, year, date_str)
+        query_page_label, query_page_url = get_stock_query_page_info(market)
         result["股價資料來源說明"] = price_source_label
         result["股價資料來源網址"] = price_source_url
+        result["股價友善查詢說明"] = query_page_label
+        result["股價友善查詢網址"] = query_page_url
         if market == "ESB":
             esb_note = "興櫃市場官方歷史行情提供的是成交均價，已據此呈現股價資訊"
             result["備註"] = f"{result['備註']}；{esb_note}" if result.get("備註") else esb_note
@@ -646,13 +660,39 @@ def query_by_stock_no(stock_no: str, year: int, price_date=None) -> dict:
 
     candidates, entry, note = _resolve_uid_from_stock_no(normalized_stock_no)
     if not candidates:
-        result["市場別"] = (
-            "上市(TWSE)" if entry and entry.get("market") == "TWSE"
-            else "上櫃(TPEX)" if entry and entry.get("market") == "TPEX"
-            else "興櫃(ESB)" if entry and entry.get("market") == "ESB"
-            else ""
-        )
-        result["備註"] = note or "查無此股票代號對應公司"
+        if entry and entry.get("market"):
+            market = entry.get("market", "")
+            target_date = _parse_price_query_date(price_date, year)
+            date_str, price = get_stock_price_on_or_before(normalized_stock_no, market, target_date)
+            label, url = get_stock_price_source_info(normalized_stock_no, market, year, date_str)
+            query_page_label, query_page_url = get_stock_query_page_info(market)
+            result["公司名稱"] = entry.get("name") or entry.get("short_name") or ""
+            result["市場別"] = (
+                "上市(TWSE)" if market == "TWSE"
+                else "上櫃(TPEX)" if market == "TPEX"
+                else "興櫃(ESB)" if market == "ESB"
+                else market
+            )
+            result["實際收盤日期"] = date_str
+            result["收盤價(元)"] = price
+            result["年底收盤日期"] = date_str
+            result["年底收盤價(元)"] = price
+            result["股價資料來源說明"] = label
+            result["股價資料來源網址"] = url
+            result["股價友善查詢說明"] = query_page_label
+            result["股價友善查詢網址"] = query_page_url
+            divs = get_dividends(normalized_stock_no, market, year, years_back=2)
+            result["除權息查詢區間"] = get_dividend_window_label(year)
+            result["除權息筆數"] = str(len(divs)) if divs else "0"
+            result["除權息明細"] = divs
+            fallback_note = note or f"已依股票代號 {normalized_stock_no} 載入市場與股價資料，但公司登記資料暫時無法唯一對應統編"
+            if market == "ESB":
+                esb_note = "興櫃市場官方歷史行情提供的是成交均價，已據此呈現股價資訊"
+                fallback_note = f"{fallback_note}；{esb_note}"
+            result["備註"] = fallback_note
+        else:
+            result["市場別"] = ""
+            result["備註"] = note or "查無此股票代號對應公司"
         return result
 
     fallback_resolved = None
@@ -692,8 +732,11 @@ def query_by_stock_no(stock_no: str, year: int, price_date=None) -> dict:
         fallback_resolved["年底收盤日期"] = date_str
         fallback_resolved["年底收盤價(元)"] = price
         label, url = get_stock_price_source_info(normalized_stock_no, market, year, date_str)
+        query_page_label, query_page_url = get_stock_query_page_info(market)
         fallback_resolved["股價資料來源說明"] = label
         fallback_resolved["股價資料來源網址"] = url
+        fallback_resolved["股價友善查詢說明"] = query_page_label
+        fallback_resolved["股價友善查詢網址"] = query_page_url
         if market == "ESB":
             esb_note = "興櫃市場官方歷史行情提供的是成交均價，已據此呈現股價資訊"
             fallback_resolved["備註"] = f"{fallback_resolved['備註']}；{esb_note}" if fallback_resolved.get("備註") else esb_note
@@ -918,6 +961,10 @@ def _format_excel_worksheet(ws) -> None:
                     label_col = header_map.get("股價資料來源說明")
                     display = ws.cell(row=cell.row, column=label_col).value if label_col else None
                     cell.value = display or "查看股價來源"
+                elif header == "股價友善查詢網址":
+                    label_col = header_map.get("股價友善查詢說明")
+                    display = ws.cell(row=cell.row, column=label_col).value if label_col else None
+                    cell.value = display or "查看股價友善查詢頁"
                 elif header == "登記資料來源網址":
                     cell.value = "查看登記資料"
                 elif header == "列印連結":
@@ -956,6 +1003,8 @@ def to_csv_bytes(results: list) -> bytes:
                     return value
                 if col == "股價資料來源網址":
                     display_text = row.get("股價資料來源說明") or "查看股價來源"
+                elif col == "股價友善查詢網址":
+                    display_text = row.get("股價友善查詢說明") or "查看股價友善查詢頁"
                 elif col == "登記資料來源網址":
                     display_text = "查看登記資料"
                 else:
