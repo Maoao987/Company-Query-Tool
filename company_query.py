@@ -46,6 +46,7 @@ TPEX_STOCK_DAY_PAGE_URL = "https://www.tpex.org.tw/zh-tw/mainboard/trading/info/
 ESB_STOCK_DAY_PAGE_URL = "https://www.tpex.org.tw/zh-tw/esb/trading/info/stock-pricing.html"
 TWSE_COMPANY_PROFILE_URL = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
 TPEX_COMPANY_PROFILE_URL = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
+ESB_COMPANY_PROFILE_URL = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_R"
 URL_EXPORT_COLUMNS = {"股價資料來源網址", "登記資料來源網址", "列印連結"}
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -54,7 +55,9 @@ URL_EXPORT_COLUMNS = {"股價資料來源網址", "登記資料來源網址", "�
 
 _ISIN_BY_STOCK: dict = {}   # stock_no → {stock_no, name, market}
 _ISIN_BY_NAME:  list = []   # [(name, entry), ...]
+_ISIN_BY_NORMALIZED_NAME: dict = {}
 _OFFICIAL_BY_STOCK: dict = {}
+_OFFICIAL_BY_UID: dict = {}
 
 
 def _normalize_company_name(name: str) -> str:
@@ -104,6 +107,9 @@ def load_isin() -> None:
                     entry = {"stock_no": m.group(1), "name": m.group(2).strip(), "market": market}
                     _ISIN_BY_STOCK[m.group(1)] = entry
                     _ISIN_BY_NAME.append((m.group(2).strip(), entry))
+                    normalized_name = _normalize_company_name(m.group(2))
+                    if normalized_name:
+                        _ISIN_BY_NORMALIZED_NAME.setdefault(normalized_name, []).append(entry)
         except Exception as e:
             print(f"  [警告] 無法載入 {market} ISIN：{e}")
 
@@ -133,6 +139,16 @@ def load_stock_profiles() -> None:
                 "uid": "UnifiedBusinessNo.",
             },
         ),
+        (
+            ESB_COMPANY_PROFILE_URL,
+            "ESB",
+            {
+                "stock_no": "SecuritiesCompanyCode",
+                "name": "CompanyName",
+                "short_name": "CompanyAbbreviation",
+                "uid": "UnifiedBusinessNo.",
+            },
+        ),
     ]
 
     for url, market, fields in sources:
@@ -152,8 +168,40 @@ def load_stock_profiles() -> None:
                     "uid": str(item.get(fields["uid"], "")).strip(),
                     "market": market,
                 }
+                uid = str(item.get(fields["uid"], "")).strip()
+                if re.fullmatch(r"\d{8}", uid):
+                    _OFFICIAL_BY_UID[uid] = _OFFICIAL_BY_STOCK[stock_no]
         except Exception as e:
             print(f"  [警告] 無法載入 {market} 公司基本資料：{e}")
+
+
+def _resolve_stock_entry_from_company_name(company_name: str) -> dict | None:
+    normalized_name = _normalize_company_name(company_name)
+    if normalized_name:
+        exact_matches = [
+            entry
+            for entry in _ISIN_BY_NORMALIZED_NAME.get(normalized_name, [])
+            if re.fullmatch(r"\d{4,6}", str(entry.get("stock_no", "")))
+        ]
+        if exact_matches:
+            exact_matches.sort(
+                key=lambda entry: (
+                    len(str(entry.get("name", ""))),
+                    str(entry.get("market", "")) in {"TWSE", "TPEX", "ESB"},
+                ),
+                reverse=True,
+            )
+            return exact_matches[0]
+
+    short = normalized_name
+    for name, entry in _ISIN_BY_NAME:
+        sno = entry["stock_no"]
+        if not re.match(r"^\d{4,6}$", sno):
+            continue
+        candidate_name = _normalize_company_name(name)
+        if short and (short in candidate_name or candidate_name in short):
+            return entry
+    return None
 
 
 def init_caches() -> None:
@@ -500,6 +548,7 @@ def _resolve_uid_from_stock_no(stock_no: str) -> tuple[list[dict], dict | None, 
 
 def query_by_uid(unified_id: str, year: int, price_date=None) -> dict:
     load_isin()
+    load_stock_profiles()
     result = {col: "" for col in RESULT_COLUMNS}
     result["年底收盤日期"] = ""
     result["年底收盤價(元)"] = ""
@@ -537,21 +586,19 @@ def query_by_uid(unified_id: str, year: int, price_date=None) -> dict:
 
     # Step 2: 尋找股票代號（ISIN）
     # 只比對 4~6 碼的普通股（過濾權證 6 碼含字母的代號）
-    co_name  = fb["公司名稱"]
+    co_name = fb["公司名稱"]
     stock_no = None
-    market   = None
+    market = None
 
-    short = re.sub(r"(股份有限公司|有限公司|企業)$", "", co_name).strip()
-    for name, entry in _ISIN_BY_NAME:
-        sno = entry["stock_no"]
-        # 只要 4~5 位純數字（普通股），跳過 6 位含字母（權證/特別股）
-        if not re.match(r"^\d{4,5}$", sno):
-            continue
-        # 雙向包含比對：短名在公司名中，或公司名在短名中
-        if short and (short in name or name in short):
-            stock_no = sno
-            market   = entry["market"]
-            break
+    official_entry = _OFFICIAL_BY_UID.get(uid)
+    if official_entry:
+        stock_no = str(official_entry.get("stock_no", "")).strip()
+        market = str(official_entry.get("market", "")).strip()
+    else:
+        matched_entry = _resolve_stock_entry_from_company_name(co_name)
+        if matched_entry:
+            stock_no = str(matched_entry.get("stock_no", "")).strip()
+            market = str(matched_entry.get("market", "")).strip()
 
     # Step 3: 年底收盤價
     if stock_no and market:

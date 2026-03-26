@@ -634,6 +634,42 @@ def maybe_prompt_for_update():
     render_update_dialog(status)
 
 
+TERMS_NOTICE_MARKDOWN = """
+**使用公告與免責聲明**
+
+1. 本工具整合公開資料來源，僅供內部參考、研究與作業輔助使用，**不構成任何法律、財務、投資或其他專業意見**。  
+2. 查詢結果可能因資料來源更新時間、網站調整、網路連線、解析誤差或第三方服務異動而與官方資料不同。  
+3. **如有任何差異、疑義或爭議，一律以各官方網站、主管機關或原始公告資料為準。**  
+4. 使用者應自行就重要資訊再次查核後再行引用、報告、對外提供或據以決策；因使用本工具資料所生之任何損失、誤判、延誤或責任，需由使用者自行承擔。  
+5. 若你不同意以上條件，請勿繼續使用本工具。
+"""
+
+
+@st.dialog("使用公告與免責聲明")
+def render_terms_dialog():
+    st.markdown(TERMS_NOTICE_MARKDOWN)
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("我不同意", key="decline_terms_btn", use_container_width=True):
+            st.session_state["terms_declined"] = True
+            st.rerun()
+    with c2:
+        if st.button("我已閱讀並同意", key="accept_terms_btn", type="primary", use_container_width=True):
+            st.session_state["terms_accepted"] = True
+            st.session_state["terms_declined"] = False
+            st.rerun()
+
+
+def require_terms_acceptance():
+    if st.session_state.get("terms_accepted"):
+        return
+    render_terms_dialog()
+    if st.session_state.get("terms_declined"):
+        st.error("你尚未同意使用公告與免責聲明，因此目前不能使用本工具。")
+        st.info("若要繼續使用，請重新整理或重新開啟頁面後按「我已閱讀並同意」。")
+    st.stop()
+
+
 def _display_value(value) -> str:
     if value is None:
         return "—"
@@ -771,6 +807,7 @@ def render_dividend_html_table(divs: list[dict], year: int, period_label: str):
 
 inject_global_styles()
 render_app_header()
+require_terms_acceptance()
 maybe_prompt_for_update()
 
 # ── 預熱快取 ──────────────────────────────────────────────────────────────────
@@ -792,6 +829,8 @@ if "name_search_year" not in st.session_state:
     st.session_state["name_search_year"] = None
 if "name_search_price_date" not in st.session_state:
     st.session_state["name_search_price_date"] = None
+if "single_query_submit_requested" not in st.session_state:
+    st.session_state["single_query_submit_requested"] = False
 
 
 def clear_single_result():
@@ -827,6 +866,10 @@ def get_previous_trading_day(selected_date: date_cls, year: int) -> date_cls:
 def set_single_result(res: dict, year: int):
     st.session_state["single_result"] = res
     st.session_state["single_result_year"] = year
+
+
+def request_single_query_submit():
+    st.session_state["single_query_submit_requested"] = True
 
 
 @st.cache_data(show_spinner="生成 findbiz 網頁列印 PDF…")
@@ -1321,50 +1364,61 @@ with tab_single:
         label_visibility="collapsed",
     )
 
-    with st.form("single_query_form", clear_on_submit=False):
-        c_query, c_setting = st.columns([1.85, 1.15])
-        with c_query:
-            if search_mode == "🔢 統一編號":
-                uid_input = st.text_input(
-                    "統一編號（8碼）",
-                    placeholder="例：34051920",
-                    max_chars=8,
-                )
-            elif search_mode == "📈 股票代號":
-                stock_input = st.text_input(
-                    "股票代號（4-6碼）",
-                    placeholder="例：1519",
-                    max_chars=6,
-                )
-            else:
-                name_input = st.text_input(
-                    "公司名稱（含部分名稱）",
-                    placeholder="例：台達電子",
-                )
-            st.caption("輸入完成後可直接按 Enter 開始查詢。")
-        with c_setting:
-            year = st.selectbox(
-                "查詢年度",
-                options=list(range(datetime.now().year - 1, datetime.now().year - 11, -1)),
+    uid_input = ""
+    stock_input = ""
+    name_input = ""
+    c_query, c_setting = st.columns([1.85, 1.15])
+    with c_query:
+        if search_mode == "🔢 統一編號":
+            uid_input = st.text_input(
+                "統一編號（8碼）",
+                placeholder="例：34051920",
+                max_chars=8,
+                key="single_uid_input",
+                on_change=request_single_query_submit,
             )
-            use_custom_price_date = st.checkbox("自訂股價日期", value=False)
-            selected_price_date = st.date_input(
-                "股價日期",
-                value=default_price_query_date(year),
-                min_value=date_cls(year, 1, 1),
-                max_value=date_cls(year, 12, 31),
-                disabled=not use_custom_price_date,
+        elif search_mode == "📈 股票代號":
+            stock_input = st.text_input(
+                "股票代號（4-6碼）",
+                placeholder="例：1519",
+                max_chars=6,
+                key="single_stock_input",
+                on_change=request_single_query_submit,
             )
-            if use_custom_price_date:
-                aligned_price_date = get_previous_trading_day(selected_price_date, year)
-                if aligned_price_date != selected_price_date:
-                    st.caption(f"若所選日期不是交易日，系統會自動往前對齊到最近交易日：{aligned_price_date.strftime('%Y/%m/%d')}")
-                else:
-                    st.caption("已選擇交易日，查詢時會直接使用這一天。")
+        else:
+            name_input = st.text_input(
+                "公司名稱（含部分名稱）",
+                placeholder="例：台達電子",
+                key="single_name_input",
+                on_change=request_single_query_submit,
+            )
+        st.caption("輸入完成後可直接按 Enter 開始查詢。")
+    with c_setting:
+        year = st.selectbox(
+            "查詢年度",
+            options=list(range(datetime.now().year - 1, datetime.now().year - 11, -1)),
+            key="single_query_year",
+        )
+        use_custom_price_date = st.checkbox("自訂股價日期", value=False, key="single_use_custom_price_date")
+        selected_price_date = st.date_input(
+            "股價日期",
+            value=default_price_query_date(year),
+            min_value=date_cls(year, 1, 1),
+            max_value=date_cls(year, 12, 31),
+            disabled=not use_custom_price_date,
+            key="single_selected_price_date",
+        )
+        if use_custom_price_date:
+            aligned_price_date = get_previous_trading_day(selected_price_date, year)
+            if aligned_price_date != selected_price_date:
+                st.caption(f"若所選日期不是交易日，系統會自動往前對齊到最近交易日：{aligned_price_date.strftime('%Y/%m/%d')}")
             else:
-                st.caption("未指定時預設抓該年度 12/31；若當天非交易日，會自動往前對齊最近交易日。")
+                st.caption("已選擇交易日，查詢時會直接使用這一天。")
+        else:
+            st.caption("未指定時預設抓該年度 12/31；若當天非交易日，會自動往前對齊最近交易日。")
 
-        search_btn = st.form_submit_button("🔍 立即查詢", type="primary", use_container_width=True)
+    search_btn = st.button("🔍 立即查詢", type="primary", use_container_width=True)
+    submit_requested = st.session_state.pop("single_query_submit_requested", False)
 
     actual_price_date = (
         selected_price_date
@@ -1372,7 +1426,7 @@ with tab_single:
         else default_price_query_date(year)
     )
 
-    if search_btn:
+    if search_btn or submit_requested:
         clear_single_result()
 
         if search_mode == "🔢 統一編號":
