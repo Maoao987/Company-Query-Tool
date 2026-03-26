@@ -1229,11 +1229,21 @@ def show_vertical(res: dict, year: int):
                 note="未自訂時預設抓取當年底；若遇休市，會回溯到最近一個有成交資料的日期。",
             )
         with source_col:
+            is_twse_market = "TWSE" in str(market or "")
             link_items = []
             if price_source_label and price_source_url:
-                link_items.append(
-                    f'<a href="{html.escape(price_source_url, quote=True)}" target="_blank">股價來源：{html.escape(price_source_label)}</a>'
-                )
+                if is_twse_market:
+                    twse_query_date = res.get("實際收盤日期") or res.get("股價查詢日期") or ""
+                    link_items.append(
+                        f'<a href="{html.escape(price_source_url, quote=True)}" target="_blank">查看上市股價官方頁面（已帶 {html.escape(str(stock_no or ""))} / {html.escape(str(twse_query_date)[:7])}）</a>'
+                    )
+                    link_items.append(
+                        '<a href="https://accessibility.twse.com.tw/zh/trading/historical/stock-day.html" target="_blank">查看 TWSE 友善查詢頁</a>'
+                    )
+                else:
+                    link_items.append(
+                        f'<a href="{html.escape(price_source_url, quote=True)}" target="_blank">股價來源：{html.escape(price_source_label)}</a>'
+                    )
             link_items.append(
                 f'<a href="{html.escape(findbiz_url, quote=True)}" target="_blank">查看 findbiz 官方頁面</a>'
             )
