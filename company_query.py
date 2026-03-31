@@ -928,12 +928,7 @@ def _flatten_result(res: dict) -> dict:
         flat["董監事資料"] = ""
     divs = flat.get("除權息明細", [])
     if isinstance(divs, list) and divs:
-        flat["除權息明細"] = "\n".join(
-            f"{d.get('日期','')} [{d.get('類別','')}]"
-            f" 現金:{d.get('現金股利(元)','—')}元"
-            f" 股票:{d.get('股票股利(元)','—')}元"
-            for d in divs
-        )
+        flat["除權息明細"] = "\n".join(_format_dividend_record(d) for d in divs)
     else:
         flat["除權息明細"] = ""
     return flat
@@ -942,6 +937,81 @@ def _flatten_result(res: dict) -> dict:
 def results_to_df(results: list) -> pd.DataFrame:
     flat = [_flatten_result(r) for r in results]
     return pd.DataFrame(flat, columns=RESULT_COLUMNS)
+
+
+def _format_dividend_record(record: dict) -> str:
+    return (
+        f"{record.get('日期','')} [{record.get('類別','')}]"
+        f" 現金:{record.get('現金股利(元)','—')}元"
+        f" 股票:{record.get('股票股利(元)','—')}元"
+    )
+
+
+def _extract_dividend_years(result: dict) -> list[int]:
+    years: set[int] = set()
+    period_label = str(result.get("除權息查詢區間", "") or "")
+    period_years = [int(token) for token in re.findall(r"\d{4}", period_label)]
+    if len(period_years) >= 2:
+        start_year, end_year = sorted(period_years[:2])
+        years.update(range(start_year, end_year + 1))
+    elif len(period_years) == 1:
+        years.add(period_years[0])
+
+    for dividend in result.get("除權息明細", []) or []:
+        match = re.match(r"^(\d{4})-", str(dividend.get("日期", "")))
+        if match:
+            years.add(int(match.group(1)))
+
+    return sorted(years, reverse=True)
+
+
+def _collect_dividend_export_years(results: list) -> list[int]:
+    years: set[int] = set()
+    for result in results:
+        years.update(_extract_dividend_years(result))
+    return sorted(years, reverse=True)
+
+
+def _build_excel_columns(dividend_years: list[int]) -> list[str]:
+    if not dividend_years:
+        return RESULT_COLUMNS
+
+    columns: list[str] = []
+    for column in RESULT_COLUMNS:
+        if column == "除權息明細":
+            columns.extend([f"除權息明細({year})" for year in dividend_years])
+            continue
+        columns.append(column)
+    return columns
+
+
+def _flatten_result_for_excel(res: dict, dividend_years: list[int]) -> dict:
+    flat = _flatten_result(res)
+    if not dividend_years:
+        return flat
+
+    yearly_dividends: dict[int, list[str]] = {year: [] for year in dividend_years}
+    for dividend in res.get("除權息明細", []) or []:
+        match = re.match(r"^(\d{4})-", str(dividend.get("日期", "")))
+        if not match:
+            continue
+        year = int(match.group(1))
+        if year in yearly_dividends:
+            yearly_dividends[year].append(_format_dividend_record(dividend))
+
+    flat.pop("除權息明細", None)
+    for year in dividend_years:
+        flat[f"除權息明細({year})"] = "\n".join(yearly_dividends[year])
+    return flat
+
+
+def results_to_excel_df(results: list) -> pd.DataFrame:
+    dividend_years = _collect_dividend_export_years(results)
+    if not dividend_years:
+        return results_to_df(results)
+
+    flat = [_flatten_result_for_excel(result, dividend_years) for result in results]
+    return pd.DataFrame(flat, columns=_build_excel_columns(dividend_years))
 
 
 def _format_excel_worksheet(ws) -> None:
@@ -975,7 +1045,7 @@ def _format_excel_worksheet(ws) -> None:
 
 
 def save_excel(results: list, output_file: str) -> None:
-    df = results_to_df(results)
+    df = results_to_excel_df(results)
     with pd.ExcelWriter(output_file, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name="查詢結果")
         ws = writer.sheets["查詢結果"]
@@ -985,7 +1055,7 @@ def save_excel(results: list, output_file: str) -> None:
 
 def to_excel_bytes(results: list) -> bytes:
     buf = io.BytesIO()
-    df = results_to_df(results)
+    df = results_to_excel_df(results)
     with pd.ExcelWriter(buf, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name="查詢結果")
         ws = writer.sheets["查詢結果"]
@@ -1028,7 +1098,7 @@ def main() -> None:
     grp.add_argument("--id",    "-i", dest="unified_id", metavar="統編")
     grp.add_argument("--stock", "-s", dest="stock_no", metavar="股號")
     grp.add_argument("--batch", "-b", metavar="檔案")
-    parser.add_argument("--year",   "-y", type=int, default=datetime.now().year - 1)
+    parser.add_argument("--year",   "-y", type=int, default=datetime.now().year)
     parser.add_argument("--price-date", dest="price_date", metavar="YYYY-MM-DD")
     parser.add_argument("--output", "-o", metavar="輸出檔")
     args = parser.parse_args()

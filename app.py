@@ -845,8 +845,23 @@ def reset_name_search_state():
     st.session_state["name_search_price_date"] = None
 
 
+def get_query_year_options(window_size: int = 10) -> list[int]:
+    current_year = datetime.now().year
+    return list(range(current_year, current_year - window_size, -1))
+
+
+def max_price_query_date(year: int) -> date_cls:
+    today = datetime.now().date()
+    return min(date_cls(year, 12, 31), today) if year == today.year else date_cls(year, 12, 31)
+
+
 def default_price_query_date(year: int) -> date_cls:
-    return date_cls(year, 12, 31)
+    return max_price_query_date(year)
+
+
+def default_price_query_caption(year: int) -> str:
+    default_date = default_price_query_date(year).strftime("%Y/%m/%d")
+    return f"未指定時預設抓 {default_date}；若當天非交易日，會自動往前對齊最近交易日。"
 
 
 @st.cache_data(show_spinner="載入交易日清單…")
@@ -1406,7 +1421,7 @@ with tab_single:
     with c_setting:
         year = st.selectbox(
             "查詢年度",
-            options=list(range(datetime.now().year - 1, datetime.now().year - 11, -1)),
+            options=get_query_year_options(),
             key="single_query_year",
         )
         use_custom_price_date = st.checkbox("自訂股價日期", value=False, key="single_use_custom_price_date")
@@ -1414,7 +1429,7 @@ with tab_single:
             "股價日期",
             value=default_price_query_date(year),
             min_value=date_cls(year, 1, 1),
-            max_value=date_cls(year, 12, 31),
+            max_value=max_price_query_date(year),
             disabled=not use_custom_price_date,
             key="single_selected_price_date",
         )
@@ -1425,7 +1440,7 @@ with tab_single:
             else:
                 st.caption("已選擇交易日，查詢時會直接使用這一天。")
         else:
-            st.caption("未指定時預設抓該年度 12/31；若當天非交易日，會自動往前對齊最近交易日。")
+            st.caption(default_price_query_caption(year))
 
     search_btn = st.button("🔍 立即查詢", type="primary", use_container_width=True)
     submit_requested = st.session_state.pop("single_query_submit_requested", False)
@@ -1603,7 +1618,7 @@ with tab_batch:
     with c2:
         year_batch = st.selectbox(
             "查詢年度 ",
-            options=list(range(datetime.now().year - 1, datetime.now().year - 11, -1)),
+            options=get_query_year_options(),
             key="year_batch",
         )
     with c3:
@@ -1612,7 +1627,7 @@ with tab_batch:
             "批次股價日期",
             value=default_price_query_date(year_batch),
             min_value=date_cls(year_batch, 1, 1),
-            max_value=date_cls(year_batch, 12, 31),
+            max_value=max_price_query_date(year_batch),
             disabled=not use_custom_batch_price_date,
             key="batch_price_date",
         )
@@ -1623,7 +1638,7 @@ with tab_batch:
             else:
                 st.caption("已選擇交易日，批次查詢時會直接使用這一天。")
         else:
-            st.caption("未指定時預設抓該年度 12/31；若當天非交易日，會自動往前對齊最近交易日。")
+            st.caption(default_price_query_caption(year_batch))
 
     actual_batch_price_date = (
         selected_batch_price_date
