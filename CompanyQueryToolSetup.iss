@@ -45,8 +45,8 @@ Source: "update_manager.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "update_config.json"; DestDir: "{app}"; Flags: ignoreversion
 Source: "version.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "web_snapshot.py"; DestDir: "{app}"; Flags: ignoreversion
-Source: "vendor\*"; DestDir: "{app}\vendor"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "wheelhouse\*"; DestDir: "{app}\wheelhouse"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "vendor\*"; DestDir: "{app}\vendor"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
+Source: "wheelhouse\*"; DestDir: "{app}\wheelhouse"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{sys}\wscript.exe"; Parameters: """{#MyRuntimeDir}\start_hidden.vbs"""; WorkingDir: "{#MyRuntimeDir}"
