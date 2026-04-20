@@ -102,7 +102,7 @@ def load_isin() -> None:
                 tds = tr.find_all("td")
                 if not tds:
                     continue
-                m = re.match(r"^(\d{3,6})\s+(.+)$", tds[0].get_text(strip=True))
+                m = re.match(r"^(\d{3,6}[A-Za-z]?)\s+(.+)$", tds[0].get_text(strip=True))
                 if m:
                     entry = {"stock_no": m.group(1), "name": m.group(2).strip(), "market": market}
                     _ISIN_BY_STOCK[m.group(1)] = entry
@@ -159,7 +159,7 @@ def load_stock_profiles() -> None:
                 continue
             for item in items:
                 stock_no = str(item.get(fields["stock_no"], "")).strip()
-                if not re.match(r"^\d{4,6}$", stock_no):
+                if not re.match(r"^\d{4,6}[A-Za-z]?$", stock_no):
                     continue
                 _OFFICIAL_BY_STOCK[stock_no] = {
                     "stock_no": stock_no,
@@ -650,12 +650,11 @@ def query_by_stock_no(stock_no: str, year: int, price_date=None) -> dict:
     result = {col: "" for col in RESULT_COLUMNS}
     result["年底收盤日期"] = ""
     result["年底收盤價(元)"] = ""
-    normalized_stock_no = str(stock_no or "").strip()
+    normalized_stock_no = str(stock_no or "").strip().upper()
     result["股票代號"] = normalized_stock_no
     result["股價查詢日期"] = _parse_price_query_date(price_date, year).strftime("%Y/%m/%d")
-
-    if not re.match(r"^\d{4,6}$", normalized_stock_no):
-        result["備註"] = "請輸入正確的 4 至 6 碼股票代號"
+    if not re.match(r"^\d{4,6}[A-Za-z]?$", normalized_stock_no):
+        result["備註"] = "請輸入正確的股票代號（4 至 6 碼數字，特別股可加英文字母後綴，如 00981A）"
         return result
 
     candidates, entry, note = _resolve_uid_from_stock_no(normalized_stock_no)
@@ -805,7 +804,7 @@ def _first_nonempty(row: pd.Series, columns: list[str]) -> str:
 def _infer_query_type(value: str) -> str:
     if re.fullmatch(r"\d{8}", value or ""):
         return "uid"
-    if re.fullmatch(r"\d{4,6}", value or ""):
+    if re.fullmatch(r"\d{4,6}[A-Za-z]?", value or ""):
         return "stock"
     return "name" if value else ""
 

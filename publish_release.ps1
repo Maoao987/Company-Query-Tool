@@ -1,4 +1,4 @@
-param(
+﻿param(
     [ValidateSet("fix", "release")]
     [string]$Mode = "fix",
     [string]$Version = "",
@@ -47,7 +47,7 @@ function Get-AreaText([string[]]$Files) {
     $areas = New-Object System.Collections.Generic.List[string]
     $joined = ($Files -join "`n")
     if ($joined -match "(^|`n)app\.py($|`n)") { $areas.Add("介面排版、按鈕和操作流程又被我順手梳了一遍") }
-    if ($joined -match "(^|`n)company_query\.py($|`n)") { $areas.Add("查詢邏輯和市場判斷補得更完整，少一點靈異事件") }
+    if ($joined -match "(^|`n)company_query\.py($|`n)") { $areas.Add("股票代號查詢現在支援特別股代號格式（如 00981A），純數字代號查詢不受影響") }
     if ($joined -match "(^|`n)pdf_report\.py($|`n)") { $areas.Add("PDF 報告又更像正式文件，不像半夜趕出來的草稿") }
     if ($joined -match "(^|`n)findbiz_scraper\.py($|`n)") { $areas.Add("公司登記資料抓取穩定度再往上拉") }
     if ($joined -match "(^|`n)web_snapshot\.py($|`n)") { $areas.Add("來源快照流程再補強，列印留存更安心") }
