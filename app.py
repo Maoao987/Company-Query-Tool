@@ -7,6 +7,7 @@
 
 import html
 import io
+import re
 import time
 from datetime import date as date_cls, datetime
 
@@ -1237,6 +1238,9 @@ def show_vertical(res: dict, year: int):
                 [
                     ("股票代號", stock_no),
                     ("市場別", market),
+                    ("商品類型", res.get("商品類型", "")),
+                    ("發行地", res.get("發行地", "")),
+                    ("ISIN Code", res.get("ISIN Code", "")),
                     ("股價查詢日期", price_query_date),
                     ("實際收盤日期", res.get("實際收盤日期") or res.get("年底收盤日期", "")),
                     ("收盤價(元)", res.get("收盤價(元)") or res.get("年底收盤價(元)", "")),
@@ -1405,7 +1409,7 @@ with tab_single:
         elif search_mode == "📈 股票代號":
             stock_input = st.text_input(
                 "股票代號（4-6碼）",
-                placeholder="例：1519",
+                placeholder="例：1519、00679B",
                 max_chars=6,
                 key="single_stock_input",
                 on_change=request_single_query_submit,
@@ -1470,9 +1474,9 @@ with tab_single:
 
         elif search_mode == "📈 股票代號":
             reset_name_search_state()
-            stock_no = stock_input.strip()
-            if not stock_no or not stock_no.isdigit() or len(stock_no) < 4:
-                st.warning("請輸入正確的 4 至 6 碼股票代號")
+            stock_no = stock_input.strip().upper()
+            if not re.fullmatch(r"[0-9A-Z]{4,6}", stock_no or ""):
+                st.warning("請輸入正確的 4 至 6 碼英數股票代號")
             else:
                 with st.spinner("查詢中，請稍候（約 5–15 秒）…"):
                     res = query_by_stock_no(stock_no, year, price_date=actual_price_date)

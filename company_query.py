@@ -37,6 +37,16 @@ _REQ = {
     "timeout": 15,
 }
 
+ISSUE_COUNTRY_BY_ISIN_PREFIX = {
+    "TW": "台灣",
+    "KY": "開曼群島",
+    "US": "美國",
+    "LU": "盧森堡",
+    "IE": "愛爾蘭",
+}
+
+STOCK_CODE_PATTERN = re.compile(r"^[0-9A-Z]{4,6}$", re.I)
+
 FIND_BIZ_HOME_URL = "https://findbiz.nat.gov.tw/fts/query/QueryBar/queryInit.do"
 TWSE_STOCK_DAY_URL = "https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY"
 TPEX_STOCK_DAY_URL = "https://www.tpex.org.tw/www/zh-tw/afterTrading/tradingStock"
@@ -98,14 +108,32 @@ def load_isin() -> None:
             table = soup.find("table", {"class": "h4"})
             if not table:
                 continue
+            security_type = ""
             for tr in table.find_all("tr")[1:]:
                 tds = tr.find_all("td")
                 if not tds:
                     continue
-                m = re.match(r"^(\d{3,6}[A-Za-z]?)\s+(.+)$", tds[0].get_text(strip=True))
+                cells = [td.get_text(" ", strip=True) for td in tds]
+                if len(cells) == 1:
+                    security_type = cells[0].strip()
+                    continue
+                m = re.match(r"^([0-9A-Z]{3,6})\s+(.+)$", cells[0], re.I)
                 if m:
-                    entry = {"stock_no": m.group(1), "name": m.group(2).strip(), "market": market}
-                    _ISIN_BY_STOCK[m.group(1)] = entry
+                    stock_no = m.group(1).upper()
+                    isin_code = cells[1].strip() if len(cells) > 1 else ""
+                    isin_prefix = isin_code[:2].upper()
+                    entry = {
+                        "stock_no": stock_no,
+                        "name": m.group(2).strip(),
+                        "market": market,
+                        "isin_code": isin_code,
+                        "issue_country": ISSUE_COUNTRY_BY_ISIN_PREFIX.get(isin_prefix, isin_prefix),
+                        "security_type": security_type,
+                        "listed_date": cells[2].strip() if len(cells) > 2 else "",
+                        "industry": cells[4].strip() if len(cells) > 4 else "",
+                        "cfi_code": cells[5].strip() if len(cells) > 5 else "",
+                    }
+                    _ISIN_BY_STOCK[stock_no] = entry
                     _ISIN_BY_NAME.append((m.group(2).strip(), entry))
                     normalized_name = _normalize_company_name(m.group(2))
                     if normalized_name:
@@ -158,8 +186,8 @@ def load_stock_profiles() -> None:
             if not isinstance(items, list):
                 continue
             for item in items:
-                stock_no = str(item.get(fields["stock_no"], "")).strip()
-                if not re.match(r"^\d{4,6}[A-Za-z]?$", stock_no):
+                stock_no = str(item.get(fields["stock_no"], "")).strip().upper()
+                if not STOCK_CODE_PATTERN.fullmatch(stock_no):
                     continue
                 _OFFICIAL_BY_STOCK[stock_no] = {
                     "stock_no": stock_no,
@@ -181,7 +209,7 @@ def _resolve_stock_entry_from_company_name(company_name: str) -> dict | None:
         exact_matches = [
             entry
             for entry in _ISIN_BY_NORMALIZED_NAME.get(normalized_name, [])
-            if re.fullmatch(r"\d{4,6}", str(entry.get("stock_no", "")))
+            if STOCK_CODE_PATTERN.fullmatch(str(entry.get("stock_no", "")))
         ]
         if exact_matches:
             exact_matches.sort(
@@ -196,12 +224,20 @@ def _resolve_stock_entry_from_company_name(company_name: str) -> dict | None:
     short = normalized_name
     for name, entry in _ISIN_BY_NAME:
         sno = entry["stock_no"]
-        if not re.match(r"^\d{4,6}$", sno):
+        if not STOCK_CODE_PATTERN.fullmatch(sno):
             continue
         candidate_name = _normalize_company_name(name)
         if short and (short in candidate_name or candidate_name in short):
             return entry
     return None
+
+
+def _apply_security_metadata(result: dict, entry: dict | None) -> None:
+    if not entry:
+        return
+    result["商品類型"] = entry.get("security_type", "") or entry.get("industry", "")
+    result["發行地"] = entry.get("issue_country", "")
+    result["ISIN Code"] = entry.get("isin_code", "")
 
 
 def init_caches() -> None:
@@ -447,7 +483,7 @@ RESULT_COLUMNS = [
     "董監事任期", "董監事資料",
     "所營事業",
     # ── 股市資訊
-    "股票代號", "市場別",
+    "股票代號", "市場別", "商品類型", "發行地", "ISIN Code",
     "股價查詢日期",
     "實際收盤日期", "收盤價(元)",
     "股價資料來源說明", "股價資料來源網址",
@@ -535,7 +571,7 @@ def query_by_name(company_name: str, year: int, price_date=None) -> dict:
 def _resolve_uid_from_stock_no(stock_no: str) -> tuple[list[dict], dict | None, str]:
     load_isin()
     load_stock_profiles()
-    normalized_stock_no = str(stock_no or "").strip()
+    normalized_stock_no = str(stock_no or "").strip().upper()
     official_entry = _OFFICIAL_BY_STOCK.get(normalized_stock_no)
     if official_entry and official_entry.get("uid"):
         return [{"ban": official_entry["uid"], "name": official_entry.get("name") or official_entry.get("short_name") or normalized_stock_no}], official_entry, ""
@@ -602,9 +638,11 @@ def query_by_uid(unified_id: str, year: int, price_date=None) -> dict:
     market = None
 
     official_entry = _OFFICIAL_BY_UID.get(uid)
+    matched_entry = None
     if official_entry:
         stock_no = str(official_entry.get("stock_no", "")).strip()
         market = str(official_entry.get("market", "")).strip()
+        matched_entry = _ISIN_BY_STOCK.get(stock_no.upper())
     else:
         matched_entry = _resolve_stock_entry_from_company_name(co_name)
         if matched_entry:
@@ -614,6 +652,7 @@ def query_by_uid(unified_id: str, year: int, price_date=None) -> dict:
     # Step 3: 年底收盤價
     if stock_no and market:
         result["股票代號"] = stock_no
+        _apply_security_metadata(result, matched_entry or _ISIN_BY_STOCK.get(stock_no.upper()))
         result["市場別"]   = (
             "上市(TWSE)" if market == "TWSE"
             else "上櫃(TPEX)" if market == "TPEX"
@@ -653,8 +692,8 @@ def query_by_stock_no(stock_no: str, year: int, price_date=None) -> dict:
     normalized_stock_no = str(stock_no or "").strip().upper()
     result["股票代號"] = normalized_stock_no
     result["股價查詢日期"] = _parse_price_query_date(price_date, year).strftime("%Y/%m/%d")
-    if not re.match(r"^\d{4,6}[A-Za-z]?$", normalized_stock_no):
-        result["備註"] = "請輸入正確的股票代號（4 至 6 碼數字，特別股可加英文字母後綴，如 00981A）"
+    if not STOCK_CODE_PATTERN.fullmatch(normalized_stock_no):
+        result["備註"] = "請輸入正確的 4 至 6 碼英數股票代號"
         return result
 
     candidates, entry, note = _resolve_uid_from_stock_no(normalized_stock_no)
@@ -666,6 +705,7 @@ def query_by_stock_no(stock_no: str, year: int, price_date=None) -> dict:
             label, url = get_stock_price_source_info(normalized_stock_no, market, year, date_str)
             query_page_label, query_page_url = get_stock_query_page_info(market)
             result["公司名稱"] = entry.get("name") or entry.get("short_name") or ""
+            _apply_security_metadata(result, entry)
             result["市場別"] = (
                 "上市(TWSE)" if market == "TWSE"
                 else "上櫃(TPEX)" if market == "TPEX"
@@ -719,6 +759,7 @@ def query_by_stock_no(stock_no: str, year: int, price_date=None) -> dict:
         target_date = _parse_price_query_date(price_date, year)
         date_str, price = get_stock_price_on_or_before(normalized_stock_no, market, target_date)
         fallback_resolved["股票代號"] = normalized_stock_no
+        _apply_security_metadata(fallback_resolved, entry)
         fallback_resolved["市場別"] = (
             "上市(TWSE)" if market == "TWSE"
             else "上櫃(TPEX)" if market == "TPEX"
@@ -749,6 +790,7 @@ def query_by_stock_no(stock_no: str, year: int, price_date=None) -> dict:
         )
         return fallback_resolved
 
+    _apply_security_metadata(result, entry)
     result["市場別"] = (
         "上市(TWSE)" if entry and entry.get("market") == "TWSE"
         else "上櫃(TPEX)" if entry and entry.get("market") == "TPEX"
@@ -804,7 +846,7 @@ def _first_nonempty(row: pd.Series, columns: list[str]) -> str:
 def _infer_query_type(value: str) -> str:
     if re.fullmatch(r"\d{8}", value or ""):
         return "uid"
-    if re.fullmatch(r"\d{4,6}[A-Za-z]?", value or ""):
+    if STOCK_CODE_PATTERN.fullmatch(value or ""):
         return "stock"
     return "name" if value else ""
 

@@ -472,6 +472,9 @@ def _append_company_report_story(story: list, result: dict, year: int) -> None:
         stock_rows = [
             ("股票代號", stock_no),
             ("市場別", market),
+            ("商品類型", result.get("商品類型")),
+            ("發行地", result.get("發行地")),
+            ("ISIN Code", result.get("ISIN Code")),
             ("股價查詢日期", price_query_date),
             ("實際收盤日期", result.get("實際收盤日期") or result.get("年底收盤日期")),
             ("收盤價", f"{result.get('收盤價(元)') or result.get('年底收盤價(元)', '—')} 元"),
@@ -650,6 +653,7 @@ def generate_stock_snapshot_pdf(result: dict, year: int) -> bytes:
     story.append(_summary_cards([
         ("股票代號", stock_no),
         ("市場別", market),
+        ("發行地", result.get("發行地") or "—"),
         ("股價查詢日期", price_query_date),
         ("收盤價(元)", result.get("收盤價(元)") or result.get("年底收盤價(元)")),
     ]))
@@ -660,6 +664,9 @@ def generate_stock_snapshot_pdf(result: dict, year: int) -> bytes:
         ("公司名稱", co_name),
         ("股票代號", stock_no),
         ("市場別", market),
+        ("商品類型", result.get("商品類型")),
+        ("發行地", result.get("發行地")),
+        ("ISIN Code", result.get("ISIN Code")),
         ("股價查詢日期", price_query_date),
         ("實際收盤日期", result.get("實際收盤日期") or result.get("年底收盤日期")),
         ("收盤價(元)", result.get("收盤價(元)") or result.get("年底收盤價(元)")),
@@ -741,6 +748,7 @@ def generate_dividend_snapshot_pdf(result: dict, year: int) -> bytes:
     story.append(_summary_cards([
         ("查詢區間", period_label),
         ("除權息筆數", div_count),
+        ("發行地", result.get("發行地") or "—"),
         ("現金股利合計(元)", cash_total),
         ("股票股利合計(元)", stock_total),
     ]))
