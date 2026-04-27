@@ -1125,6 +1125,8 @@ def show_vertical(res: dict, year: int):
     findbiz_url = res.get("登記資料來源網址") or f"https://findbiz.nat.gov.tw/fts/query/QueryBar/queryInit.do?banNo={uid}"
     price_source_label = res.get("股價資料來源說明", "")
     price_source_url = res.get("股價資料來源網址", "")
+    issue_place_label = res.get("發行地查詢說明", "")
+    issue_place_url = res.get("發行地查詢網址", "")
     st.markdown(
         f"""
         <section class="section-card">
@@ -1266,6 +1268,20 @@ def show_vertical(res: dict, year: int):
             link_items.append(
                 f'<a href="{html.escape(findbiz_url, quote=True)}" target="_blank">查看 findbiz 官方頁面</a>'
             )
+            if issue_place_url:
+                link_items.append(
+                    f'<a href="{html.escape(issue_place_url, quote=True)}" target="_blank">{html.escape(issue_place_label or "查看 ISIN 公開資料")}</a>'
+                )
+            yahoo_dividend_url = res.get("Yahoo股利頁網址", "")
+            mops_url = res.get("MOPS查詢頁網址", "")
+            if yahoo_dividend_url:
+                link_items.append(
+                    f'<a href="{html.escape(yahoo_dividend_url, quote=True)}" target="_blank">查看 Yahoo 股利頁</a>'
+                )
+            if mops_url:
+                link_items.append(
+                    f'<a href="{html.escape(mops_url, quote=True)}" target="_blank">查看 MOPS 查詢頁</a>'
+                )
             st.markdown(
                 f"""
                 <section class="section-card">

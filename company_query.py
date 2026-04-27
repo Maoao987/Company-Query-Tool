@@ -57,7 +57,21 @@ ESB_STOCK_DAY_PAGE_URL = "https://www.tpex.org.tw/zh-tw/esb/trading/info/stock-p
 TWSE_COMPANY_PROFILE_URL = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
 TPEX_COMPANY_PROFILE_URL = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
 ESB_COMPANY_PROFILE_URL = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_R"
-URL_EXPORT_COLUMNS = {"股價資料來源網址", "股價友善查詢網址", "登記資料來源網址", "列印連結"}
+MOPS_DIVIDEND_URL = "https://mops.twse.com.tw/mops/web/t05st09"
+ISIN_PUBLIC_URL_BY_MARKET = {
+    "TWSE": "https://isin.twse.com.tw/isin/C_public.jsp?strMode=2",
+    "TPEX": "https://isin.twse.com.tw/isin/C_public.jsp?strMode=4",
+    "ESB": "https://isin.twse.com.tw/isin/C_public.jsp?strMode=5",
+}
+URL_EXPORT_COLUMNS = {
+    "登記資料來源網址",
+    "股價資料來源網址",
+    "股價友善查詢網址",
+    "發行地查詢網址",
+    "Yahoo股利頁網址",
+    "MOPS查詢頁網址",
+    "列印連結",
+}
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 1. ISIN 清單（判斷上市/上櫃）
@@ -238,6 +252,8 @@ def _apply_security_metadata(result: dict, entry: dict | None) -> None:
     result["商品類型"] = entry.get("security_type", "") or entry.get("industry", "")
     result["發行地"] = entry.get("issue_country", "")
     result["ISIN Code"] = entry.get("isin_code", "")
+    result["發行地查詢說明"] = "ISIN 公開資料查詢"
+    result["發行地查詢網址"] = ISIN_PUBLIC_URL_BY_MARKET.get(str(entry.get("market", "")).strip(), "")
 
 
 def init_caches() -> None:
@@ -422,6 +438,23 @@ def get_stock_query_page_info(market: str) -> tuple[str, str]:
     return "", ""
 
 
+def get_yahoo_dividend_url(stock_no: str, market: str) -> str:
+    if not stock_no:
+        return ""
+    suffix = ".TW" if "TWSE" in (market or "") else ".TWO"
+    return f"https://tw.stock.yahoo.com/quote/{stock_no}{suffix}/dividend"
+
+
+def apply_source_links(result: dict, stock_no: str = "", market: str = "") -> None:
+    findbiz_url = result.get("登記資料來源網址", "")
+    if findbiz_url:
+        result["公司登記資料說明"] = "查看 findbiz 官方頁面"
+    if stock_no:
+        result["除權息資料來源說明"] = "查看 Yahoo 股利頁；查看 MOPS 查詢頁"
+        result["Yahoo股利頁網址"] = get_yahoo_dividend_url(stock_no, market)
+        result["MOPS查詢頁網址"] = MOPS_DIVIDEND_URL
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # 3. 除權息資訊（yfinance）
 # ══════════════════════════════════════════════════════════════════════════════
@@ -484,6 +517,7 @@ RESULT_COLUMNS = [
     "所營事業",
     # ── 股市資訊
     "股票代號", "市場別", "商品類型", "發行地", "ISIN Code",
+    "發行地查詢說明", "發行地查詢網址",
     "股價查詢日期",
     "實際收盤日期", "收盤價(元)",
     "股價資料來源說明", "股價資料來源網址",
@@ -492,7 +526,9 @@ RESULT_COLUMNS = [
     "除權息查詢區間",
     "除權息筆數", "除權息明細",
     # ── 連結
-    "登記資料來源網址", "列印連結",
+    "公司登記資料說明", "登記資料來源網址",
+    "除權息資料來源說明", "Yahoo股利頁網址", "MOPS查詢頁網址",
+    "列印連結",
     "備註",
 ]
 
@@ -627,6 +663,7 @@ def query_by_uid(unified_id: str, year: int, price_date=None) -> dict:
 
     stable_findbiz_url = fb.get("_share_url", "") or f"{FIND_BIZ_HOME_URL}?banNo={uid}"
     result["登記資料來源網址"] = stable_findbiz_url
+    result["公司登記資料說明"] = "查看 findbiz 官方頁面"
     result["列印連結"]         = stable_findbiz_url
     result["_detail_html"]    = fb.get("_detail_html", "")
     result["_snapshot_at"]    = fb.get("_snapshot_at", "")
@@ -670,6 +707,7 @@ def query_by_uid(unified_id: str, year: int, price_date=None) -> dict:
         result["股價資料來源網址"] = price_source_url
         result["股價友善查詢說明"] = query_page_label
         result["股價友善查詢網址"] = query_page_url
+        apply_source_links(result, stock_no, market)
         if market == "ESB":
             esb_note = "興櫃市場官方歷史行情提供的是成交均價，已據此呈現股價資訊"
             result["備註"] = f"{result['備註']}；{esb_note}" if result.get("備註") else esb_note
@@ -720,6 +758,7 @@ def query_by_stock_no(stock_no: str, year: int, price_date=None) -> dict:
             result["股價資料來源網址"] = url
             result["股價友善查詢說明"] = query_page_label
             result["股價友善查詢網址"] = query_page_url
+            apply_source_links(result, normalized_stock_no, market)
             divs = get_dividends(normalized_stock_no, market, year, years_back=2)
             result["除權息查詢區間"] = get_dividend_window_label(year)
             result["除權息筆數"] = str(len(divs)) if divs else "0"
@@ -777,6 +816,7 @@ def query_by_stock_no(stock_no: str, year: int, price_date=None) -> dict:
         fallback_resolved["股價資料來源網址"] = url
         fallback_resolved["股價友善查詢說明"] = query_page_label
         fallback_resolved["股價友善查詢網址"] = query_page_url
+        apply_source_links(fallback_resolved, normalized_stock_no, market)
         if market == "ESB":
             esb_note = "興櫃市場官方歷史行情提供的是成交均價，已據此呈現股價資訊"
             fallback_resolved["備註"] = f"{fallback_resolved['備註']}；{esb_note}" if fallback_resolved.get("備註") else esb_note
@@ -1076,8 +1116,18 @@ def _format_excel_worksheet(ws) -> None:
                     label_col = header_map.get("股價友善查詢說明")
                     display = ws.cell(row=cell.row, column=label_col).value if label_col else None
                     cell.value = display or "查看股價友善查詢頁"
+                elif header == "發行地查詢網址":
+                    label_col = header_map.get("發行地查詢說明")
+                    display = ws.cell(row=cell.row, column=label_col).value if label_col else None
+                    cell.value = display or "查看 ISIN 公開資料"
                 elif header == "登記資料來源網址":
-                    cell.value = "查看登記資料"
+                    label_col = header_map.get("公司登記資料說明")
+                    display = ws.cell(row=cell.row, column=label_col).value if label_col else None
+                    cell.value = display or "查看 findbiz 官方頁面"
+                elif header == "Yahoo股利頁網址":
+                    cell.value = "查看 Yahoo 股利頁"
+                elif header == "MOPS查詢頁網址":
+                    cell.value = "查看 MOPS 查詢頁"
                 elif header == "列印連結":
                     cell.value = "查看來源頁面"
                 cell.hyperlink = target
@@ -1116,8 +1166,14 @@ def to_csv_bytes(results: list) -> bytes:
                     display_text = row.get("股價資料來源說明") or "查看股價來源"
                 elif col == "股價友善查詢網址":
                     display_text = row.get("股價友善查詢說明") or "查看股價友善查詢頁"
+                elif col == "發行地查詢網址":
+                    display_text = row.get("發行地查詢說明") or "查看 ISIN 公開資料"
                 elif col == "登記資料來源網址":
-                    display_text = "查看登記資料"
+                    display_text = row.get("公司登記資料說明") or "查看 findbiz 官方頁面"
+                elif col == "Yahoo股利頁網址":
+                    display_text = "查看 Yahoo 股利頁"
+                elif col == "MOPS查詢頁網址":
+                    display_text = "查看 MOPS 查詢頁"
                 else:
                     display_text = "查看來源頁面"
                 target = str(value).replace('"', '""')

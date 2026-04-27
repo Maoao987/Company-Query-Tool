@@ -412,6 +412,8 @@ def _append_company_report_story(story: list, result: dict, year: int) -> None:
     price_source_url = result.get("股價資料來源網址") or ""
     query_page_label = result.get("股價友善查詢說明") or ""
     query_page_url = result.get("股價友善查詢網址") or ""
+    issue_place_label = result.get("發行地查詢說明") or "ISIN 公開資料查詢"
+    issue_place_url = result.get("發行地查詢網址") or ""
     period_label = _dividend_period_label(result, year)
     suffix = ".TW" if "TWSE" in (market or "") else ".TWO"
     yahoo_div_url = f"https://tw.stock.yahoo.com/quote/{stock_no}{suffix}/dividend" if stock_no else ""
@@ -475,6 +477,7 @@ def _append_company_report_story(story: list, result: dict, year: int) -> None:
             ("商品類型", result.get("商品類型")),
             ("發行地", result.get("發行地")),
             ("ISIN Code", result.get("ISIN Code")),
+            ("發行地查詢", _link_markup(issue_place_url, issue_place_label) if issue_place_url else "—"),
             ("股價查詢日期", price_query_date),
             ("實際收盤日期", result.get("實際收盤日期") or result.get("年底收盤日期")),
             ("收盤價", f"{result.get('收盤價(元)') or result.get('年底收盤價(元)', '—')} 元"),
@@ -498,6 +501,7 @@ def _append_company_report_story(story: list, result: dict, year: int) -> None:
         ("公司登記資料", _link_markup(findbiz_url, "查看 findbiz 官方頁面")),
         ("股價資料來源", _link_markup(price_source_url, price_source_label) if stock_no else "—"),
         ("股價友善查詢頁", _link_markup(query_page_url, query_page_label) if stock_no and query_page_url else "—"),
+        ("發行地查詢頁", _link_markup(issue_place_url, issue_place_label) if stock_no and issue_place_url else "—"),
         (
             "除權息資料來源",
             f"{_link_markup(yahoo_div_url, '查看 Yahoo 股利頁')}<br/>{_link_markup(mops_url, '查看 MOPS 查詢頁')}"
@@ -645,6 +649,8 @@ def generate_stock_snapshot_pdf(result: dict, year: int) -> bytes:
     price_source_url = result.get("股價資料來源網址") or "—"
     query_page_label = result.get("股價友善查詢說明") or ""
     query_page_url = result.get("股價友善查詢網址") or "—"
+    issue_place_label = result.get("發行地查詢說明") or "ISIN 公開資料查詢"
+    issue_place_url = result.get("發行地查詢網址") or "—"
 
     _banner(story, "股票資訊快照", [
         f"公司名稱：{co_name}　　股票代號：{stock_no}",
@@ -667,6 +673,7 @@ def generate_stock_snapshot_pdf(result: dict, year: int) -> bytes:
         ("商品類型", result.get("商品類型")),
         ("發行地", result.get("發行地")),
         ("ISIN Code", result.get("ISIN Code")),
+        ("發行地查詢", _link_markup(issue_place_url, issue_place_label) if issue_place_url != "—" else "—"),
         ("股價查詢日期", price_query_date),
         ("實際收盤日期", result.get("實際收盤日期") or result.get("年底收盤日期")),
         ("收盤價(元)", result.get("收盤價(元)") or result.get("年底收盤價(元)")),
@@ -682,6 +689,7 @@ def generate_stock_snapshot_pdf(result: dict, year: int) -> bytes:
     story.append(_official_info_table([
         ("股價資料來源", _link_markup(price_source_url, price_source_label)),
         ("股價友善查詢頁", _link_markup(query_page_url, query_page_label) if query_page_url != "—" and query_page_label else "—"),
+        ("發行地查詢頁", _link_markup(issue_place_url, issue_place_label) if issue_place_url != "—" else "—"),
         ("Yahoo Finance", _link_markup(yahoo_url, "查看 Yahoo Finance")),
         ("MOPS 除權息查詢", _link_markup(mops_url, "查看 MOPS 查詢頁")),
         ("查詢提示", f"若需交叉確認 MOPS 原站，可於查詢欄輸入代號 {stock_no}"),
@@ -717,6 +725,8 @@ def generate_dividend_snapshot_pdf(result: dict, year: int) -> bytes:
     mops_url = "https://mops.twse.com.tw/mops/web/t05st09"
     query_page_label = result.get("股價友善查詢說明") or ""
     query_page_url = result.get("股價友善查詢網址") or "—"
+    issue_place_label = result.get("發行地查詢說明") or "ISIN 公開資料查詢"
+    issue_place_url = result.get("發行地查詢網址") or "—"
     divs = result.get("除權息明細", [])
     period_label = _dividend_period_label(result, year)
 
@@ -771,6 +781,7 @@ def generate_dividend_snapshot_pdf(result: dict, year: int) -> bytes:
     story.append(Spacer(1, 4))
     story.append(_official_info_table([
         ("股價友善查詢頁", _link_markup(query_page_url, query_page_label) if query_page_url != "—" and query_page_label else "—"),
+        ("發行地查詢頁", _link_markup(issue_place_url, issue_place_label) if issue_place_url != "—" else "—"),
         ("Yahoo Finance 歷史股利", _link_markup(yahoo_url, "查看 Yahoo 股利頁")),
         ("MOPS 除權息查詢", _link_markup(mops_url, "查看 MOPS 查詢頁")),
         ("查詢提示", f"若需交叉確認 MOPS 原站，可於查詢欄輸入代號 {stock_no}"),
