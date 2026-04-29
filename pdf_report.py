@@ -410,9 +410,11 @@ def _append_company_report_story(story: list, result: dict, year: int) -> None:
     findbiz_url = result.get("登記資料來源網址") or "—"
     price_source_label = result.get("股價資料來源說明") or "TWSE／TPEX 公開資料"
     price_source_url = result.get("股價資料來源網址") or ""
+    isin_source_label = result.get("ISIN資料來源說明") or "查看 TWSE ISIN 公開資料"
+    isin_source_url = result.get("ISIN資料來源網址") or ""
     query_page_label = result.get("股價友善查詢說明") or ""
     query_page_url = result.get("股價友善查詢網址") or ""
-    issue_place_label = result.get("發行地查詢說明") or "ISIN 公開資料查詢"
+    issue_place_label = result.get("發行地查詢說明") or "ISIN 國碼說明"
     issue_place_url = result.get("發行地查詢網址") or ""
     period_label = _dividend_period_label(result, year)
     suffix = ".TW" if "TWSE" in (market or "") else ".TWO"
@@ -477,6 +479,7 @@ def _append_company_report_story(story: list, result: dict, year: int) -> None:
             ("商品類型", result.get("商品類型")),
             ("發行地", result.get("發行地")),
             ("ISIN Code", result.get("ISIN Code")),
+            ("ISIN 資料來源", _link_markup(isin_source_url, isin_source_label) if isin_source_url else "—"),
             ("發行地查詢", _link_markup(issue_place_url, issue_place_label) if issue_place_url else "—"),
             ("股價查詢日期", price_query_date),
             ("實際收盤日期", result.get("實際收盤日期") or result.get("年底收盤日期")),
@@ -499,6 +502,7 @@ def _append_company_report_story(story: list, result: dict, year: int) -> None:
     story.append(Spacer(1, 4))
     source_rows = [
         ("公司登記資料", _link_markup(findbiz_url, "查看 findbiz 官方頁面")),
+        ("ISIN 資料來源", _link_markup(isin_source_url, isin_source_label) if stock_no and isin_source_url else "—"),
         ("股價資料來源", _link_markup(price_source_url, price_source_label) if stock_no else "—"),
         ("股價友善查詢頁", _link_markup(query_page_url, query_page_label) if stock_no and query_page_url else "—"),
         ("發行地查詢頁", _link_markup(issue_place_url, issue_place_label) if stock_no and issue_place_url else "—"),
@@ -647,9 +651,11 @@ def generate_stock_snapshot_pdf(result: dict, year: int) -> bytes:
     mops_url = "https://mops.twse.com.tw/mops/web/t05st09"
     price_source_label = result.get("股價資料來源說明") or "TWSE／TPEX 公開資料"
     price_source_url = result.get("股價資料來源網址") or "—"
+    isin_source_label = result.get("ISIN資料來源說明") or "查看 TWSE ISIN 公開資料"
+    isin_source_url = result.get("ISIN資料來源網址") or "—"
     query_page_label = result.get("股價友善查詢說明") or ""
     query_page_url = result.get("股價友善查詢網址") or "—"
-    issue_place_label = result.get("發行地查詢說明") or "ISIN 公開資料查詢"
+    issue_place_label = result.get("發行地查詢說明") or "ISIN 國碼說明"
     issue_place_url = result.get("發行地查詢網址") or "—"
 
     _banner(story, "股票資訊快照", [
@@ -673,6 +679,7 @@ def generate_stock_snapshot_pdf(result: dict, year: int) -> bytes:
         ("商品類型", result.get("商品類型")),
         ("發行地", result.get("發行地")),
         ("ISIN Code", result.get("ISIN Code")),
+        ("ISIN 資料來源", _link_markup(isin_source_url, isin_source_label) if isin_source_url != "—" else "—"),
         ("發行地查詢", _link_markup(issue_place_url, issue_place_label) if issue_place_url != "—" else "—"),
         ("股價查詢日期", price_query_date),
         ("實際收盤日期", result.get("實際收盤日期") or result.get("年底收盤日期")),
@@ -688,6 +695,7 @@ def generate_stock_snapshot_pdf(result: dict, year: int) -> bytes:
     story.append(Spacer(1, 4))
     story.append(_official_info_table([
         ("股價資料來源", _link_markup(price_source_url, price_source_label)),
+        ("ISIN 資料來源", _link_markup(isin_source_url, isin_source_label) if isin_source_url != "—" else "—"),
         ("股價友善查詢頁", _link_markup(query_page_url, query_page_label) if query_page_url != "—" and query_page_label else "—"),
         ("發行地查詢頁", _link_markup(issue_place_url, issue_place_label) if issue_place_url != "—" else "—"),
         ("Yahoo Finance", _link_markup(yahoo_url, "查看 Yahoo Finance")),
@@ -723,9 +731,11 @@ def generate_dividend_snapshot_pdf(result: dict, year: int) -> bytes:
     suffix = ".TW" if "TWSE" in market else ".TWO"
     yahoo_url = f"https://tw.stock.yahoo.com/quote/{stock_no}{suffix}/dividend" if stock_no != "—" else "—"
     mops_url = "https://mops.twse.com.tw/mops/web/t05st09"
+    isin_source_label = result.get("ISIN資料來源說明") or "查看 TWSE ISIN 公開資料"
+    isin_source_url = result.get("ISIN資料來源網址") or "—"
     query_page_label = result.get("股價友善查詢說明") or ""
     query_page_url = result.get("股價友善查詢網址") or "—"
-    issue_place_label = result.get("發行地查詢說明") or "ISIN 公開資料查詢"
+    issue_place_label = result.get("發行地查詢說明") or "ISIN 國碼說明"
     issue_place_url = result.get("發行地查詢網址") or "—"
     divs = result.get("除權息明細", [])
     period_label = _dividend_period_label(result, year)
@@ -780,6 +790,7 @@ def generate_dividend_snapshot_pdf(result: dict, year: int) -> bytes:
     story.append(_section_heading("來源說明"))
     story.append(Spacer(1, 4))
     story.append(_official_info_table([
+        ("ISIN 資料來源", _link_markup(isin_source_url, isin_source_label) if isin_source_url != "—" else "—"),
         ("股價友善查詢頁", _link_markup(query_page_url, query_page_label) if query_page_url != "—" and query_page_label else "—"),
         ("發行地查詢頁", _link_markup(issue_place_url, issue_place_label) if issue_place_url != "—" else "—"),
         ("Yahoo Finance 歷史股利", _link_markup(yahoo_url, "查看 Yahoo 股利頁")),

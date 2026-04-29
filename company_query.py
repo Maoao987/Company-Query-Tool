@@ -40,6 +40,12 @@ _REQ = {
 ISSUE_COUNTRY_BY_ISIN_PREFIX = {
     "TW": "台灣",
     "KY": "開曼群島",
+    "BM": "百慕達",
+    "VG": "英屬維京群島",
+    "HK": "香港",
+    "CN": "中國",
+    "JP": "日本",
+    "SG": "新加坡",
     "US": "美國",
     "LU": "盧森堡",
     "IE": "愛爾蘭",
@@ -65,6 +71,7 @@ ISIN_PUBLIC_URL_BY_MARKET = {
 }
 URL_EXPORT_COLUMNS = {
     "登記資料來源網址",
+    "ISIN資料來源網址",
     "股價資料來源網址",
     "股價友善查詢網址",
     "發行地查詢網址",
@@ -136,12 +143,13 @@ def load_isin() -> None:
                     stock_no = m.group(1).upper()
                     isin_code = cells[1].strip() if len(cells) > 1 else ""
                     isin_prefix = isin_code[:2].upper()
+                    issue_country = ISSUE_COUNTRY_BY_ISIN_PREFIX.get(isin_prefix, "未知")
                     entry = {
                         "stock_no": stock_no,
                         "name": m.group(2).strip(),
                         "market": market,
                         "isin_code": isin_code,
-                        "issue_country": ISSUE_COUNTRY_BY_ISIN_PREFIX.get(isin_prefix, isin_prefix),
+                        "issue_country": issue_country,
                         "security_type": security_type,
                         "listed_date": cells[2].strip() if len(cells) > 2 else "",
                         "industry": cells[4].strip() if len(cells) > 4 else "",
@@ -249,11 +257,19 @@ def _resolve_stock_entry_from_company_name(company_name: str) -> dict | None:
 def _apply_security_metadata(result: dict, entry: dict | None) -> None:
     if not entry:
         return
+    isin_code = str(entry.get("isin_code", "") or "").strip()
+    issue_country = entry.get("issue_country", "")
     result["商品類型"] = entry.get("security_type", "") or entry.get("industry", "")
-    result["發行地"] = entry.get("issue_country", "")
-    result["ISIN Code"] = entry.get("isin_code", "")
-    result["發行地查詢說明"] = "ISIN 公開資料查詢"
-    result["發行地查詢網址"] = ISIN_PUBLIC_URL_BY_MARKET.get(str(entry.get("market", "")).strip(), "")
+    result["發行地"] = issue_country
+    result["ISIN Code"] = isin_code
+    result["發行地查詢說明"] = (
+        f"發行地：{issue_country}（依 ISIN 前兩碼自動判定）"
+        if issue_country
+        else "ISIN 國碼說明"
+    )
+    result["發行地查詢網址"] = ""
+    result["ISIN資料來源說明"] = "查看 TWSE ISIN 公開資料"
+    result["ISIN資料來源網址"] = ISIN_PUBLIC_URL_BY_MARKET.get(str(entry.get("market", "")).strip(), "")
 
 
 def init_caches() -> None:
@@ -517,6 +533,7 @@ RESULT_COLUMNS = [
     "所營事業",
     # ── 股市資訊
     "股票代號", "市場別", "商品類型", "發行地", "ISIN Code",
+    "ISIN資料來源說明", "ISIN資料來源網址",
     "發行地查詢說明", "發行地查詢網址",
     "股價查詢日期",
     "實際收盤日期", "收盤價(元)",
@@ -1112,6 +1129,10 @@ def _format_excel_worksheet(ws) -> None:
                     label_col = header_map.get("股價資料來源說明")
                     display = ws.cell(row=cell.row, column=label_col).value if label_col else None
                     cell.value = display or "查看股價來源"
+                elif header == "ISIN資料來源網址":
+                    label_col = header_map.get("ISIN資料來源說明")
+                    display = ws.cell(row=cell.row, column=label_col).value if label_col else None
+                    cell.value = display or "查看 TWSE ISIN 公開資料"
                 elif header == "股價友善查詢網址":
                     label_col = header_map.get("股價友善查詢說明")
                     display = ws.cell(row=cell.row, column=label_col).value if label_col else None
@@ -1119,7 +1140,7 @@ def _format_excel_worksheet(ws) -> None:
                 elif header == "發行地查詢網址":
                     label_col = header_map.get("發行地查詢說明")
                     display = ws.cell(row=cell.row, column=label_col).value if label_col else None
-                    cell.value = display or "查看 ISIN 公開資料"
+                    cell.value = display or "查看 ISIN 國碼說明"
                 elif header == "登記資料來源網址":
                     label_col = header_map.get("公司登記資料說明")
                     display = ws.cell(row=cell.row, column=label_col).value if label_col else None
@@ -1164,10 +1185,12 @@ def to_csv_bytes(results: list) -> bytes:
                     return value
                 if col == "股價資料來源網址":
                     display_text = row.get("股價資料來源說明") or "查看股價來源"
+                elif col == "ISIN資料來源網址":
+                    display_text = row.get("ISIN資料來源說明") or "查看 TWSE ISIN 公開資料"
                 elif col == "股價友善查詢網址":
                     display_text = row.get("股價友善查詢說明") or "查看股價友善查詢頁"
                 elif col == "發行地查詢網址":
-                    display_text = row.get("發行地查詢說明") or "查看 ISIN 公開資料"
+                    display_text = row.get("發行地查詢說明") or "查看 ISIN 國碼說明"
                 elif col == "登記資料來源網址":
                     display_text = row.get("公司登記資料說明") or "查看 findbiz 官方頁面"
                 elif col == "Yahoo股利頁網址":

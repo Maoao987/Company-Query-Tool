@@ -44,9 +44,11 @@ class CompanyQueryTests(unittest.TestCase):
 
         result = {}
         company_query._apply_security_metadata(result, entry)
-        self.assertEqual(result["發行地查詢說明"], "ISIN 公開資料查詢")
+        self.assertEqual(result["發行地查詢說明"], "發行地：台灣（依 ISIN 前兩碼自動判定）")
+        self.assertEqual(result["發行地查詢網址"], "")
+        self.assertEqual(result["ISIN資料來源說明"], "查看 TWSE ISIN 公開資料")
         self.assertEqual(
-            result["發行地查詢網址"],
+            result["ISIN資料來源網址"],
             "https://isin.twse.com.tw/isin/C_public.jsp?strMode=4",
         )
 
@@ -66,6 +68,8 @@ class CompanyQueryTests(unittest.TestCase):
                 "股票代號": "2330",
                 "股價資料來源說明": "TWSE 個股日成交資訊（官方報表）",
                 "股價資料來源網址": "https://example.test/price",
+                "ISIN資料來源說明": "查看 TWSE ISIN 公開資料",
+                "ISIN資料來源網址": "https://example.test/isin",
                 "股價友善查詢說明": "TWSE 友善查詢頁",
                 "股價友善查詢網址": "https://example.test/friendly",
                 "公司登記資料說明": "查看 findbiz 官方頁面",
@@ -82,12 +86,14 @@ class CompanyQueryTests(unittest.TestCase):
         row = {header: sheet.cell(row=2, column=index + 1) for index, header in enumerate(headers)}
 
         self.assertEqual(row["登記資料來源網址"].value, "查看 findbiz 官方頁面")
+        self.assertEqual(row["ISIN資料來源網址"].value, "查看 TWSE ISIN 公開資料")
         self.assertEqual(row["股價資料來源網址"].value, "TWSE 個股日成交資訊（官方報表）")
         self.assertEqual(row["股價友善查詢網址"].value, "TWSE 友善查詢頁")
         self.assertEqual(row["Yahoo股利頁網址"].value, "查看 Yahoo 股利頁")
         self.assertEqual(row["MOPS查詢頁網址"].value, "查看 MOPS 查詢頁")
         self.assertEqual(row["Yahoo股利頁網址"].hyperlink.target, "https://example.test/yahoo")
         self.assertEqual(row["MOPS查詢頁網址"].hyperlink.target, "https://example.test/mops")
+        self.assertEqual(row["ISIN資料來源網址"].hyperlink.target, "https://example.test/isin")
 
 
 if __name__ == "__main__":
