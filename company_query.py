@@ -7,6 +7,7 @@
   - TWSE/TPEX ISIN 清單   → 判斷上市/上櫃及股票代號
   - TWSE openapi          → 上市公司年底收盤價
   - TPEX openapi          → 上櫃公司年底收盤價
+  - 鉅亨網個股頁          → 股價/發行地友善查詢連結
   - yfinance              → 除息 / 除權歷史資料
 """
 
@@ -64,6 +65,7 @@ TWSE_COMPANY_PROFILE_URL = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
 TPEX_COMPANY_PROFILE_URL = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
 ESB_COMPANY_PROFILE_URL = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_R"
 MOPS_DIVIDEND_URL = "https://mops.twse.com.tw/mops/web/t05st09"
+CNYES_STOCK_URL_TEMPLATE = "https://www.cnyes.com/twstock/{stock_no}"
 ISIN_PUBLIC_URL_BY_MARKET = {
     "TWSE": "https://isin.twse.com.tw/isin/C_public.jsp?strMode=2",
     "TPEX": "https://isin.twse.com.tw/isin/C_public.jsp?strMode=4",
@@ -89,6 +91,13 @@ _ISIN_BY_NAME:  list = []   # [(name, entry), ...]
 _ISIN_BY_NORMALIZED_NAME: dict = {}
 _OFFICIAL_BY_STOCK: dict = {}
 _OFFICIAL_BY_UID: dict = {}
+
+
+def get_cnyes_stock_url(stock_no: str) -> str:
+    normalized = str(stock_no or "").strip().upper()
+    if not STOCK_CODE_PATTERN.fullmatch(normalized):
+        return ""
+    return CNYES_STOCK_URL_TEMPLATE.format(stock_no=normalized)
 
 
 def _normalize_company_name(name: str) -> str:
@@ -257,17 +266,19 @@ def _resolve_stock_entry_from_company_name(company_name: str) -> dict | None:
 def _apply_security_metadata(result: dict, entry: dict | None) -> None:
     if not entry:
         return
+    stock_no = str(entry.get("stock_no", "") or "").strip().upper()
     isin_code = str(entry.get("isin_code", "") or "").strip()
     issue_country = entry.get("issue_country", "")
+    cnyes_url = get_cnyes_stock_url(stock_no)
     result["商品類型"] = entry.get("security_type", "") or entry.get("industry", "")
     result["發行地"] = issue_country
     result["ISIN Code"] = isin_code
     result["發行地查詢說明"] = (
-        f"發行地：{issue_country}（依 ISIN 前兩碼自動判定）"
+        f"發行地：{issue_country}（查看鉅亨網個股頁）"
         if issue_country
-        else "ISIN 國碼說明"
+        else "查看鉅亨網個股頁"
     )
-    result["發行地查詢網址"] = ""
+    result["發行地查詢網址"] = cnyes_url
     result["ISIN資料來源說明"] = "查看 TWSE ISIN 公開資料"
     result["ISIN資料來源網址"] = ISIN_PUBLIC_URL_BY_MARKET.get(str(entry.get("market", "")).strip(), "")
 
@@ -444,7 +455,10 @@ def get_stock_price_source_info(stock_no: str, market: str, year: int, date_str:
     return "", ""
 
 
-def get_stock_query_page_info(market: str) -> tuple[str, str]:
+def get_stock_query_page_info(market: str, stock_no: str = "") -> tuple[str, str]:
+    cnyes_url = get_cnyes_stock_url(stock_no)
+    if cnyes_url:
+        return ("鉅亨網個股頁", cnyes_url)
     if market == "TWSE":
         return ("TWSE 友善查詢頁", TWSE_STOCK_DAY_PAGE_URL)
     if market == "TPEX":
@@ -719,7 +733,7 @@ def query_by_uid(unified_id: str, year: int, price_date=None) -> dict:
         result["年底收盤日期"]   = date_str
         result["年底收盤價(元)"] = price
         price_source_label, price_source_url = get_stock_price_source_info(stock_no, market, year, date_str)
-        query_page_label, query_page_url = get_stock_query_page_info(market)
+        query_page_label, query_page_url = get_stock_query_page_info(market, stock_no)
         result["股價資料來源說明"] = price_source_label
         result["股價資料來源網址"] = price_source_url
         result["股價友善查詢說明"] = query_page_label
@@ -758,7 +772,7 @@ def query_by_stock_no(stock_no: str, year: int, price_date=None) -> dict:
             target_date = _parse_price_query_date(price_date, year)
             date_str, price = get_stock_price_on_or_before(normalized_stock_no, market, target_date)
             label, url = get_stock_price_source_info(normalized_stock_no, market, year, date_str)
-            query_page_label, query_page_url = get_stock_query_page_info(market)
+            query_page_label, query_page_url = get_stock_query_page_info(market, normalized_stock_no)
             result["公司名稱"] = entry.get("name") or entry.get("short_name") or ""
             _apply_security_metadata(result, entry)
             result["市場別"] = (
@@ -828,7 +842,7 @@ def query_by_stock_no(stock_no: str, year: int, price_date=None) -> dict:
         fallback_resolved["年底收盤日期"] = date_str
         fallback_resolved["年底收盤價(元)"] = price
         label, url = get_stock_price_source_info(normalized_stock_no, market, year, date_str)
-        query_page_label, query_page_url = get_stock_query_page_info(market)
+        query_page_label, query_page_url = get_stock_query_page_info(market, normalized_stock_no)
         fallback_resolved["股價資料來源說明"] = label
         fallback_resolved["股價資料來源網址"] = url
         fallback_resolved["股價友善查詢說明"] = query_page_label
@@ -1136,11 +1150,11 @@ def _format_excel_worksheet(ws) -> None:
                 elif header == "股價友善查詢網址":
                     label_col = header_map.get("股價友善查詢說明")
                     display = ws.cell(row=cell.row, column=label_col).value if label_col else None
-                    cell.value = display or "查看股價友善查詢頁"
+                    cell.value = display or "查看鉅亨網個股頁"
                 elif header == "發行地查詢網址":
                     label_col = header_map.get("發行地查詢說明")
                     display = ws.cell(row=cell.row, column=label_col).value if label_col else None
-                    cell.value = display or "查看 ISIN 國碼說明"
+                    cell.value = display or "查看鉅亨網個股頁"
                 elif header == "登記資料來源網址":
                     label_col = header_map.get("公司登記資料說明")
                     display = ws.cell(row=cell.row, column=label_col).value if label_col else None
@@ -1188,9 +1202,9 @@ def to_csv_bytes(results: list) -> bytes:
                 elif col == "ISIN資料來源網址":
                     display_text = row.get("ISIN資料來源說明") or "查看 TWSE ISIN 公開資料"
                 elif col == "股價友善查詢網址":
-                    display_text = row.get("股價友善查詢說明") or "查看股價友善查詢頁"
+                    display_text = row.get("股價友善查詢說明") or "查看鉅亨網個股頁"
                 elif col == "發行地查詢網址":
-                    display_text = row.get("發行地查詢說明") or "查看 ISIN 國碼說明"
+                    display_text = row.get("發行地查詢說明") or "查看鉅亨網個股頁"
                 elif col == "登記資料來源網址":
                     display_text = row.get("公司登記資料說明") or "查看 findbiz 官方頁面"
                 elif col == "Yahoo股利頁網址":

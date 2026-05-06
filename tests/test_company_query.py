@@ -44,13 +44,19 @@ class CompanyQueryTests(unittest.TestCase):
 
         result = {}
         company_query._apply_security_metadata(result, entry)
-        self.assertEqual(result["發行地查詢說明"], "發行地：台灣（依 ISIN 前兩碼自動判定）")
-        self.assertEqual(result["發行地查詢網址"], "")
+        self.assertEqual(result["發行地查詢說明"], "發行地：台灣（查看鉅亨網個股頁）")
+        self.assertEqual(result["發行地查詢網址"], "https://www.cnyes.com/twstock/00679B")
         self.assertEqual(result["ISIN資料來源說明"], "查看 TWSE ISIN 公開資料")
         self.assertEqual(
             result["ISIN資料來源網址"],
             "https://isin.twse.com.tw/isin/C_public.jsp?strMode=4",
         )
+
+    def test_cnyes_stock_page_is_friendly_stock_link(self):
+        label, url = company_query.get_stock_query_page_info("TWSE", "2330")
+
+        self.assertEqual(label, "鉅亨網個股頁")
+        self.assertEqual(url, "https://www.cnyes.com/twstock/2330")
 
     def test_batch_infers_alphanumeric_etf_code_as_stock(self):
         df = pd.DataFrame({"query": ["00679B"]})

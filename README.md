@@ -44,6 +44,7 @@ CSV 或 Excel 可包含以下任一欄位：
 - 臺灣證券交易所 TWSE
 - 證券櫃檯買賣中心 TPEX
 - ISIN 公開資料
+- 鉅亨網個股頁（友善查詢連結）
 - Yahoo Finance / yfinance
 - 公開資訊觀測站 MOPS
 

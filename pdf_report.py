@@ -521,7 +521,7 @@ def _append_company_report_story(story: list, result: dict, year: int) -> None:
         story.append(Paragraph(f"備註：{note}", _styles()["small"]))
 
     _footer(story, [
-        "資料來源：findbiz.nat.gov.tw（經濟部商工登記公示資料查詢服務）／ TWSE ／ TPEX ／ Yahoo Finance ／ MOPS",
+        "資料來源：findbiz.nat.gov.tw（經濟部商工登記公示資料查詢服務）／ TWSE ／ TPEX ／ 鉅亨網 ／ Yahoo Finance ／ MOPS",
         f"本報告依本次查詢結果產製，對應公司：{co_name}",
     ])
 
@@ -646,8 +646,6 @@ def generate_stock_snapshot_pdf(result: dict, year: int) -> bytes:
     co_name = result.get("公司名稱") or "—"
     snapshot_at = result.get("_snapshot_at", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     price_query_date = result.get("股價查詢日期") or f"{year}/12/31"
-    suffix = ".TW" if "TWSE" in market else ".TWO"
-    yahoo_url = f"https://tw.stock.yahoo.com/quote/{stock_no}{suffix}" if stock_no != "—" else "—"
     mops_url = "https://mops.twse.com.tw/mops/web/t05st09"
     price_source_label = result.get("股價資料來源說明") or "TWSE／TPEX 公開資料"
     price_source_url = result.get("股價資料來源網址") or "—"
@@ -698,13 +696,12 @@ def generate_stock_snapshot_pdf(result: dict, year: int) -> bytes:
         ("ISIN 資料來源", _link_markup(isin_source_url, isin_source_label) if isin_source_url != "—" else "—"),
         ("股價友善查詢頁", _link_markup(query_page_url, query_page_label) if query_page_url != "—" and query_page_label else "—"),
         ("發行地查詢頁", _link_markup(issue_place_url, issue_place_label) if issue_place_url != "—" else "—"),
-        ("Yahoo Finance", _link_markup(yahoo_url, "查看 Yahoo Finance")),
         ("MOPS 除權息查詢", _link_markup(mops_url, "查看 MOPS 查詢頁")),
         ("查詢提示", f"若需交叉確認 MOPS 原站，可於查詢欄輸入代號 {stock_no}"),
     ]))
 
     _footer(story, [
-        "資料整理來源：TWSE／TPEX 公開資料、Yahoo Finance、MOPS",
+        "資料整理來源：TWSE／TPEX 公開資料、鉅亨網、MOPS",
         f"本快照依本次查詢結果產製，對應公司：{co_name}",
     ])
 
@@ -799,7 +796,7 @@ def generate_dividend_snapshot_pdf(result: dict, year: int) -> bytes:
     ]))
 
     _footer(story, [
-        "資料整理來源：Yahoo Finance、MOPS",
+        "資料整理來源：鉅亨網、Yahoo Finance、MOPS",
         f"本快照依本次查詢結果產製，查詢區間：{period_label}",
     ])
 

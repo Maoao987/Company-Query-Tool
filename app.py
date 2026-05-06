@@ -561,7 +561,7 @@ def render_app_header():
           </p>
           <div class="hero-source-row">
             <span class="source-chip">工商登記：findbiz.nat.gov.tw</span>
-            <span class="source-chip">股價：TWSE / TPEX</span>
+            <span class="source-chip">股價：TWSE / TPEX；友善頁：鉅亨網</span>
             <span class="source-chip">除權息：MOPS / Yahoo Finance</span>
             <span class="source-chip">交付格式：Excel / CSV / PDF</span>
           </div>
@@ -1252,42 +1252,33 @@ def show_vertical(res: dict, year: int):
                 note="未自訂時預設抓取當年底；若遇休市，會回溯到最近一個有成交資料的日期。",
             )
         with source_col:
-            is_twse_market = "TWSE" in str(market or "")
             link_items = []
+            seen_link_urls = set()
+            def _append_link(url: str, label: str) -> None:
+                if not url or url in seen_link_urls:
+                    return
+                seen_link_urls.add(url)
+                link_items.append(
+                    f'<a href="{html.escape(url, quote=True)}" target="_blank">{html.escape(label)}</a>'
+                )
+
+            query_page_label = res.get("股價友善查詢說明", "")
+            query_page_url = res.get("股價友善查詢網址", "")
+            if query_page_url:
+                _append_link(query_page_url, f"發行地/股價友善頁：{query_page_label or '鉅亨網個股頁'}")
             if price_source_label and price_source_url:
-                if is_twse_market:
-                    twse_query_date = res.get("實際收盤日期") or res.get("股價查詢日期") or ""
-                    link_items.append(
-                        f'<a href="{html.escape(price_source_url, quote=True)}" target="_blank">查看上市股價官方頁面（已帶 {html.escape(str(stock_no or ""))} / {html.escape(str(twse_query_date)[:7])}）</a>'
-                    )
-                    link_items.append(
-                        '<a href="https://accessibility.twse.com.tw/zh/trading/historical/stock-day.html" target="_blank">查看 TWSE 友善查詢頁</a>'
-                    )
-                else:
-                    link_items.append(
-                        f'<a href="{html.escape(price_source_url, quote=True)}" target="_blank">股價來源：{html.escape(price_source_label)}</a>'
-                    )
-            link_items.append(
-                f'<a href="{html.escape(findbiz_url, quote=True)}" target="_blank">查看 findbiz 官方頁面</a>'
-            )
+                _append_link(price_source_url, f"股價官方來源：{price_source_label}")
+            _append_link(findbiz_url, "查看 findbiz 官方頁面")
             if isin_source_url:
-                link_items.append(
-                    f'<a href="{html.escape(isin_source_url, quote=True)}" target="_blank">{html.escape(isin_source_label or "查看 TWSE ISIN 公開資料")}</a>'
-                )
+                _append_link(isin_source_url, isin_source_label or "查看 TWSE ISIN 官方資料")
             if issue_place_url:
-                link_items.append(
-                    f'<a href="{html.escape(issue_place_url, quote=True)}" target="_blank">{html.escape(issue_place_label or "查看 ISIN 國碼說明")}</a>'
-                )
+                _append_link(issue_place_url, issue_place_label or "查看鉅亨網個股頁")
             yahoo_dividend_url = res.get("Yahoo股利頁網址", "")
             mops_url = res.get("MOPS查詢頁網址", "")
             if yahoo_dividend_url:
-                link_items.append(
-                    f'<a href="{html.escape(yahoo_dividend_url, quote=True)}" target="_blank">查看 Yahoo 股利頁</a>'
-                )
+                _append_link(yahoo_dividend_url, "查看 Yahoo 股利頁")
             if mops_url:
-                link_items.append(
-                    f'<a href="{html.escape(mops_url, quote=True)}" target="_blank">查看 MOPS 查詢頁</a>'
-                )
+                _append_link(mops_url, "查看 MOPS 查詢頁")
             st.markdown(
                 f"""
                 <section class="section-card">
@@ -1296,7 +1287,7 @@ def show_vertical(res: dict, year: int):
                       <div class="section-icon">🔗</div>
                       <div>
                         <h3 class="section-title">來源與快照</h3>
-                        <p class="section-note">可直接回到官方來源頁，也能把本次查詢內容另存成 PDF 快照。</p>
+                        <p class="section-note">可直接回到來源頁，也能把本次查詢內容另存成 PDF 快照。</p>
                       </div>
                     </div>
                   </div>
