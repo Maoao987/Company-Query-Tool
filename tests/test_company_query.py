@@ -19,6 +19,8 @@ class CompanyQueryTests(unittest.TestCase):
         company_query._ISIN_BY_STOCK.clear()
         company_query._ISIN_BY_NAME.clear()
         company_query._ISIN_BY_NORMALIZED_NAME.clear()
+        company_query._OFFICIAL_BY_STOCK.clear()
+        company_query._OFFICIAL_BY_UID.clear()
 
     def test_load_isin_keeps_etf_metadata(self):
         html = """
@@ -100,6 +102,52 @@ class CompanyQueryTests(unittest.TestCase):
         self.assertEqual(row["Yahoo股利頁網址"].hyperlink.target, "https://example.test/yahoo")
         self.assertEqual(row["MOPS查詢頁網址"].hyperlink.target, "https://example.test/mops")
         self.assertEqual(row["ISIN資料來源網址"].hyperlink.target, "https://example.test/isin")
+
+    def test_stock_lookup_uses_official_profile_when_findbiz_is_blocked(self):
+        profile_entry = {
+            "stock_no": "2834",
+            "name": "臺灣中小企業銀行股份有限公司",
+            "short_name": "臺企銀",
+            "uid": "03793407",
+            "market": "TWSE",
+            "raw": {
+                "公司代號": "2834",
+                "公司名稱": "臺灣中小企業銀行股份有限公司",
+                "公司簡稱": "臺企銀",
+                "營利事業統一編號": "03793407",
+                "董事長": "李嘉祥",
+                "住址": "台北市塔城街三十號",
+                "成立日期": "19500923",
+                "實收資本額": "97180618490",
+                "普通股每股面額": "新台幣 10.0000元",
+                "已發行普通股數或TDR原股發行股數": "9718061849",
+            },
+        }
+        isin_entry = {
+            **profile_entry,
+            "isin_code": "TW0002834009",
+            "issue_country": "台灣",
+            "security_type": "股票",
+        }
+        company_query._OFFICIAL_BY_STOCK["2834"] = profile_entry
+        company_query._OFFICIAL_BY_UID["03793407"] = profile_entry
+        company_query._ISIN_BY_STOCK["2834"] = isin_entry
+
+        with patch("company_query.scrape_company", return_value={"統一編號": "03793407", "公司名稱": "", "_error": "403 Client Error"}), \
+             patch("company_query.get_stock_price_on_or_before", return_value=("2026/05/13", "18.80")), \
+             patch("company_query.get_dividends", return_value=[]):
+            result = company_query.query_by_stock_no("2834", 2026, price_date="2026/05/13")
+
+        self.assertEqual(result["統一編號"], "03793407")
+        self.assertEqual(result["公司名稱"], "臺灣中小企業銀行股份有限公司")
+        self.assertEqual(result["代表人姓名"], "李嘉祥")
+        self.assertEqual(result["公司所在地"], "台北市塔城街三十號")
+        self.assertEqual(result["核准設立日期"], "1950/09/23")
+        self.assertEqual(result["實收資本額(元)"], "97180618490")
+        self.assertEqual(result["股票代號"], "2834")
+        self.assertEqual(result["市場別"], "上市(TWSE)")
+        self.assertEqual(result["實際收盤日期"], "2026/05/13")
+        self.assertIn("findbiz", result["備註"])
 
 
 if __name__ == "__main__":

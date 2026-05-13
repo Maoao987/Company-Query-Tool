@@ -66,6 +66,11 @@ TPEX_COMPANY_PROFILE_URL = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_
 ESB_COMPANY_PROFILE_URL = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_R"
 MOPS_DIVIDEND_URL = "https://mops.twse.com.tw/mops/web/t05st09"
 CNYES_STOCK_URL_TEMPLATE = "https://www.cnyes.com/twstock/{stock_no}"
+COMPANY_PROFILE_URL_BY_MARKET = {
+    "TWSE": TWSE_COMPANY_PROFILE_URL,
+    "TPEX": TPEX_COMPANY_PROFILE_URL,
+    "ESB": ESB_COMPANY_PROFILE_URL,
+}
 ISIN_PUBLIC_URL_BY_MARKET = {
     "TWSE": "https://isin.twse.com.tw/isin/C_public.jsp?strMode=2",
     "TPEX": "https://isin.twse.com.tw/isin/C_public.jsp?strMode=4",
@@ -226,6 +231,7 @@ def load_stock_profiles() -> None:
                     "short_name": str(item.get(fields["short_name"], "")).strip(),
                     "uid": str(item.get(fields["uid"], "")).strip(),
                     "market": market,
+                    "raw": dict(item),
                 }
                 uid = str(item.get(fields["uid"], "")).strip()
                 if re.fullmatch(r"\d{8}", uid):
@@ -281,6 +287,134 @@ def _apply_security_metadata(result: dict, entry: dict | None) -> None:
     result["發行地查詢網址"] = cnyes_url
     result["ISIN資料來源說明"] = "查看 TWSE ISIN 公開資料"
     result["ISIN資料來源網址"] = ISIN_PUBLIC_URL_BY_MARKET.get(str(entry.get("market", "")).strip(), "")
+
+
+def _market_label(market: str) -> str:
+    return (
+        "上市(TWSE)" if market == "TWSE"
+        else "上櫃(TPEX)" if market == "TPEX"
+        else "興櫃(ESB)" if market == "ESB"
+        else market
+    )
+
+
+def _profile_source_label(market: str) -> str:
+    return (
+        "TWSE 上市公司基本資料"
+        if market == "TWSE"
+        else "TPEX 上櫃公司基本資料"
+        if market == "TPEX"
+        else "TPEX 興櫃公司基本資料"
+        if market == "ESB"
+        else "官方公司基本資料"
+    )
+
+
+def _clean_profile_value(value) -> str:
+    text = str(value or "").strip().replace("\u3000", " ")
+    text = re.sub(r"\s+", " ", text)
+    return "" if text in {"", "-", "－", "—", "N/A", "None", "null"} else text
+
+
+def _profile_value(entry: dict | None, *keys: str) -> str:
+    if not entry:
+        return ""
+    raw = entry.get("raw") or {}
+    for key in keys:
+        value = _clean_profile_value(raw.get(key))
+        if value:
+            return value
+    return ""
+
+
+def _format_profile_date(value: str) -> str:
+    text = _clean_profile_value(value)
+    if re.fullmatch(r"\d{8}", text):
+        return f"{text[:4]}/{text[4:6]}/{text[6:8]}"
+    return text
+
+
+def _set_if_blank(result: dict, key: str, value: str) -> None:
+    value = _clean_profile_value(value)
+    if value and not result.get(key):
+        result[key] = value
+
+
+def _append_note(result: dict, note: str) -> None:
+    note = str(note or "").strip()
+    if not note:
+        return
+    result["備註"] = f"{result['備註']}；{note}" if result.get("備註") else note
+
+
+def _apply_official_company_profile(result: dict, entry: dict | None) -> None:
+    if not entry:
+        return
+
+    market = str(entry.get("market", "") or "").strip()
+    _set_if_blank(result, "統一編號", entry.get("uid", ""))
+    _set_if_blank(result, "公司名稱", entry.get("name") or entry.get("short_name", ""))
+    _set_if_blank(result, "代表人姓名", _profile_value(entry, "董事長", "Chairman"))
+    _set_if_blank(result, "公司所在地", _profile_value(entry, "住址", "Address"))
+    _set_if_blank(result, "核准設立日期", _format_profile_date(_profile_value(entry, "成立日期", "DateOfIncorporation")))
+    _set_if_blank(result, "實收資本額(元)", _profile_value(entry, "實收資本額", "Paidin.Capital.NTDollars"))
+    _set_if_blank(result, "每股金額(元)", _profile_value(entry, "普通股每股面額", "ParValueOfCommonStock"))
+    _set_if_blank(result, "已發行股份總數(股)", _profile_value(entry, "已發行普通股數或TDR原股發行股數", "IssueShares"))
+
+    source_url = COMPANY_PROFILE_URL_BY_MARKET.get(market, "")
+    if source_url and not result.get("登記資料來源網址"):
+        result["公司登記資料說明"] = f"查看 {_profile_source_label(market)}"
+        result["登記資料來源網址"] = source_url
+        result["列印連結"] = source_url
+
+
+def _populate_stock_result(result: dict, stock_no: str, market: str, year: int, price_date=None, entry: dict | None = None) -> None:
+    target_date = _parse_price_query_date(price_date, year)
+    result["股票代號"] = stock_no
+    result["股價查詢日期"] = target_date.strftime("%Y/%m/%d")
+    if not stock_no or not market:
+        result["市場別"] = "未上市/未上櫃/未登錄興櫃"
+        return
+
+    security_entry = _ISIN_BY_STOCK.get(str(stock_no).upper()) or entry
+    _apply_security_metadata(result, security_entry)
+    result["市場別"] = _market_label(market)
+    date_str, price = get_stock_price_on_or_before(stock_no, market, target_date)
+    result["實際收盤日期"] = date_str
+    result["收盤價(元)"] = price
+    result["年底收盤日期"] = date_str
+    result["年底收盤價(元)"] = price
+    price_source_label, price_source_url = get_stock_price_source_info(stock_no, market, year, date_str)
+    query_page_label, query_page_url = get_stock_query_page_info(market, stock_no)
+    result["股價資料來源說明"] = price_source_label
+    result["股價資料來源網址"] = price_source_url
+    result["股價友善查詢說明"] = query_page_label
+    result["股價友善查詢網址"] = query_page_url
+    apply_source_links(result, stock_no, market)
+
+    if market == "ESB":
+        _append_note(result, "興櫃市場官方歷史行情提供的是成交均價，已據此呈現股價資訊")
+
+    result["除權息查詢區間"] = get_dividend_window_label(year)
+    divs = get_dividends(stock_no, market, year, years_back=2)
+    result["除權息筆數"] = str(len(divs)) if divs else "0"
+    result["除權息明細"] = divs
+
+
+def _build_official_profile_result(entry: dict, year: int, price_date=None, note: str = "") -> dict:
+    result = {col: "" for col in RESULT_COLUMNS}
+    result["年底收盤日期"] = ""
+    result["年底收盤價(元)"] = ""
+    _apply_official_company_profile(result, entry)
+
+    stock_no = str(entry.get("stock_no", "") or "").strip().upper()
+    market = str(entry.get("market", "") or "").strip()
+    _populate_stock_result(result, stock_no, market, year, price_date=price_date, entry=entry)
+    _append_note(
+        result,
+        note or "findbiz 目前無法直接存取，已改用官方上市櫃公司基本資料補齊可取得欄位",
+    )
+    return result
 
 
 def init_caches() -> None:
@@ -477,8 +611,10 @@ def get_yahoo_dividend_url(stock_no: str, market: str) -> str:
 
 def apply_source_links(result: dict, stock_no: str = "", market: str = "") -> None:
     findbiz_url = result.get("登記資料來源網址", "")
-    if findbiz_url:
+    if findbiz_url and "findbiz.nat.gov.tw" in findbiz_url:
         result["公司登記資料說明"] = "查看 findbiz 官方頁面"
+    elif findbiz_url and not result.get("公司登記資料說明"):
+        result["公司登記資料說明"] = "查看公司基本資料來源"
     if stock_no:
         result["除權息資料來源說明"] = "查看 Yahoo 股利頁；查看 MOPS 查詢頁"
         result["Yahoo股利頁網址"] = get_yahoo_dividend_url(stock_no, market)
@@ -672,11 +808,26 @@ def query_by_uid(unified_id: str, year: int, price_date=None) -> dict:
     result["股價查詢日期"] = target_date.strftime("%Y/%m/%d")
 
     # Step 1: findbiz 公司登記資料
+    official_entry = _OFFICIAL_BY_UID.get(uid)
     fb = scrape_company(uid)
     if fb.get("_error"):
+        if official_entry:
+            return _build_official_profile_result(
+                official_entry,
+                year,
+                price_date=price_date,
+                note=f"findbiz 目前無法直接存取（{fb['_error']}），已改用官方上市櫃公司基本資料補齊可取得欄位",
+            )
         result["備註"] = fb["_error"]
         return result
     if not fb.get("公司名稱"):
+        if official_entry:
+            return _build_official_profile_result(
+                official_entry,
+                year,
+                price_date=price_date,
+                note="findbiz 暫時查不到公司登記資料，已改用官方上市櫃公司基本資料補齊可取得欄位",
+            )
         result["備註"] = "查無此統一編號，請確認是否正確"
         return result
 
@@ -705,7 +856,6 @@ def query_by_uid(unified_id: str, year: int, price_date=None) -> dict:
     stock_no = None
     market = None
 
-    official_entry = _OFFICIAL_BY_UID.get(uid)
     matched_entry = None
     if official_entry:
         stock_no = str(official_entry.get("stock_no", "")).strip()
@@ -766,6 +916,11 @@ def query_by_stock_no(stock_no: str, year: int, price_date=None) -> dict:
         return result
 
     candidates, entry, note = _resolve_uid_from_stock_no(normalized_stock_no)
+    if candidates and entry and re.fullmatch(r"\d{8}", str(entry.get("uid", "") or "")):
+        resolved = query_by_uid(str(entry["uid"]), year, price_date=price_date)
+        if resolved.get("公司名稱"):
+            return resolved
+
     if not candidates:
         if entry and entry.get("market"):
             market = entry.get("market", "")
@@ -773,6 +928,7 @@ def query_by_stock_no(stock_no: str, year: int, price_date=None) -> dict:
             date_str, price = get_stock_price_on_or_before(normalized_stock_no, market, target_date)
             label, url = get_stock_price_source_info(normalized_stock_no, market, year, date_str)
             query_page_label, query_page_url = get_stock_query_page_info(market, normalized_stock_no)
+            _apply_official_company_profile(result, entry)
             result["公司名稱"] = entry.get("name") or entry.get("short_name") or ""
             _apply_security_metadata(result, entry)
             result["市場別"] = (
@@ -860,6 +1016,14 @@ def query_by_stock_no(stock_no: str, year: int, price_date=None) -> dict:
             or f"已依股票代號 {normalized_stock_no} 補齊股價與除權息資料，但公司名稱對應結果可能需要人工複核"
         )
         return fallback_resolved
+
+    if entry and re.fullmatch(r"\d{8}", str(entry.get("uid", "") or "")):
+        return _build_official_profile_result(
+            entry,
+            year,
+            price_date=price_date,
+            note="findbiz 目前無法直接存取，已改用官方上市櫃公司基本資料補齊可取得欄位",
+        )
 
     _apply_security_metadata(result, entry)
     result["市場別"] = (

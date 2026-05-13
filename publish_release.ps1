@@ -92,7 +92,41 @@ $($fileLines -join "`r`n")
 function Invoke-BuildArtifacts {
     powershell -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "sync_version.ps1")
     & "C:\Users\aschy\AppData\Local\Programs\Inno Setup 6\ISCC.exe" (Join-Path $PSScriptRoot "CompanyQueryToolSetup.iss")
-    cmd /c "cd /d $PSScriptRoot && if not exist dist mkdir dist && if exist $PSScriptRoot\dist\Company_Query_Tool_Setup.zip del /f /q $PSScriptRoot\dist\Company_Query_Tool_Setup.zip && tar.exe -a -c -f $PSScriptRoot\dist\Company_Query_Tool_Setup.zip app.py company_query.py findbiz_scraper.py Install.bat install.ps1 pdf_report.py requirements.txt start.bat start_hidden.vbs update_manager.py update_config.json version.txt web_snapshot.py CompanyQueryToolSetup.iss version.iss.inc sync_version.ps1 publish_release.ps1 README.md tests vendor wheelhouse"
+
+    $zipPath = Join-Path $PSScriptRoot "dist\Company_Query_Tool_Setup.zip"
+    Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
+    $zipItems = @(
+        "app.py",
+        "company_query.py",
+        "findbiz_scraper.py",
+        "Install.bat",
+        "install.ps1",
+        "pdf_report.py",
+        "requirements.txt",
+        "start.bat",
+        "start_hidden.vbs",
+        "update_manager.py",
+        "update_config.json",
+        "version.txt",
+        "web_snapshot.py",
+        "CompanyQueryToolSetup.iss",
+        "version.iss.inc",
+        "sync_version.ps1",
+        "publish_release.ps1",
+        "README.md",
+        "tests",
+        "vendor",
+        "wheelhouse"
+    )
+    Push-Location $PSScriptRoot
+    try {
+        & tar.exe -a -c -f $zipPath @zipItems
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path $zipPath)) {
+            throw "Failed to create zip package: $zipPath"
+        }
+    } finally {
+        Pop-Location
+    }
 }
 
 $currentVersion = Get-CurrentVersion

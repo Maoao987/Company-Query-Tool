@@ -1127,6 +1127,7 @@ def show_vertical(res: dict, year: int):
     price_source_url = res.get("股價資料來源網址", "")
     isin_source_label = res.get("ISIN資料來源說明", "")
     isin_source_url = res.get("ISIN資料來源網址", "")
+    registration_source_label = res.get("公司登記資料說明") or "查看 findbiz 官方頁面"
     issue_place_label = res.get("發行地查詢說明", "")
     issue_place_url = res.get("發行地查詢網址", "")
     st.markdown(
@@ -1268,7 +1269,7 @@ def show_vertical(res: dict, year: int):
                 _append_link(query_page_url, f"發行地/股價友善頁：{query_page_label or '鉅亨網個股頁'}")
             if price_source_label and price_source_url:
                 _append_link(price_source_url, f"股價官方來源：{price_source_label}")
-            _append_link(findbiz_url, "查看 findbiz 官方頁面")
+            _append_link(findbiz_url, registration_source_label)
             if isin_source_url:
                 _append_link(isin_source_url, isin_source_label or "查看 TWSE ISIN 官方資料")
             if issue_place_url:
@@ -1360,7 +1361,7 @@ def show_vertical(res: dict, year: int):
                 </div>
               </div>
               <div class="link-pill-row">
-                <a href="{html.escape(findbiz_url, quote=True)}" target="_blank">查看 findbiz 官方頁面</a>
+                <a href="{html.escape(findbiz_url, quote=True)}" target="_blank">{html.escape(registration_source_label)}</a>
               </div>
               <div style="height:0.8rem;"></div>
               <div class="hint-box">目前統一編號：{html.escape(uid)}，可直接下載公司基本資料 PDF 或 findbiz 網頁列印 PDF 留存。</div>

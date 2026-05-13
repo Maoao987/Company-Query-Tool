@@ -408,6 +408,7 @@ def _append_company_report_story(story: list, result: dict, year: int) -> None:
     market = result.get("市場別")
     price_query_date = result.get("股價查詢日期") or f"{year}/12/31"
     findbiz_url = result.get("登記資料來源網址") or "—"
+    registration_source_label = result.get("公司登記資料說明") or "查看 findbiz 官方頁面"
     price_source_label = result.get("股價資料來源說明") or "TWSE／TPEX 公開資料"
     price_source_url = result.get("股價資料來源網址") or ""
     isin_source_label = result.get("ISIN資料來源說明") or "查看 TWSE ISIN 公開資料"
@@ -501,7 +502,7 @@ def _append_company_report_story(story: list, result: dict, year: int) -> None:
     story.append(_section_heading("來源說明"))
     story.append(Spacer(1, 4))
     source_rows = [
-        ("公司登記資料", _link_markup(findbiz_url, "查看 findbiz 官方頁面")),
+        ("公司登記資料", _link_markup(findbiz_url, registration_source_label) if findbiz_url != "—" else "—"),
         ("ISIN 資料來源", _link_markup(isin_source_url, isin_source_label) if stock_no and isin_source_url else "—"),
         ("股價資料來源", _link_markup(price_source_url, price_source_label) if stock_no else "—"),
         ("股價友善查詢頁", _link_markup(query_page_url, query_page_label) if stock_no and query_page_url else "—"),
@@ -521,7 +522,7 @@ def _append_company_report_story(story: list, result: dict, year: int) -> None:
         story.append(Paragraph(f"備註：{note}", _styles()["small"]))
 
     _footer(story, [
-        "資料來源：findbiz.nat.gov.tw（經濟部商工登記公示資料查詢服務）／ TWSE ／ TPEX ／ 鉅亨網 ／ Yahoo Finance ／ MOPS",
+        "資料來源：公司基本資料來源／ TWSE ／ TPEX ／ 鉅亨網 ／ Yahoo Finance ／ MOPS",
         f"本報告依本次查詢結果產製，對應公司：{co_name}",
     ])
 
