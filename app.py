@@ -20,13 +20,13 @@ from company_query import (
     extract_batch_requests,
     get_trading_days,
     init_caches,
+    search_company_candidates,
     query_by_stock_no,
     query_by_uid,
     run_batch_request,
     to_excel_bytes,
     to_csv_bytes,
 )
-from findbiz_scraper import search_companies_by_name
 from pdf_report import (
     generate_batch_report_pdf,
     generate_dividend_snapshot_pdf,
@@ -1507,7 +1507,7 @@ with tab_single:
                 st.warning("請輸入公司名稱")
             else:
                 with st.spinner("搜尋中，請稍候…"):
-                    candidates = search_companies_by_name(name)
+                    candidates = search_company_candidates(name)
 
                 if not candidates:
                     reset_name_search_state()

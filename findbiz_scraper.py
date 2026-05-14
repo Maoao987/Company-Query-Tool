@@ -13,7 +13,6 @@ import base64
 import re
 import time
 from datetime import datetime
-from typing import Optional
 
 import requests
 import urllib3
@@ -22,6 +21,13 @@ from bs4 import BeautifulSoup
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 BASE = "https://findbiz.nat.gov.tw"
+GCIS_API_BASE = "https://data.gcis.nat.gov.tw/od/data/api"
+GCIS_COMPANY_PROFILE_API_ID = "5F64D864-61CB-4D0D-8AD9-492047CC1EA6"
+GCIS_COMPANY_BUSINESS_API_ID = "236EE382-4942-41A9-BD03-CA0709025E7C"
+GCIS_COMPANY_KEYWORD_API_ID = "6BBA2268-1367-4B42-9CCA-BC17499EBE8C"
+GCIS_COMPANY_PROFILE_URL = f"{GCIS_API_BASE}/{GCIS_COMPANY_PROFILE_API_ID}"
+GCIS_COMPANY_BUSINESS_URL = f"{GCIS_API_BASE}/{GCIS_COMPANY_BUSINESS_API_ID}"
+GCIS_COMPANY_KEYWORD_URL = f"{GCIS_API_BASE}/{GCIS_COMPANY_KEYWORD_API_ID}"
 _HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     "Accept-Language": "zh-TW,zh;q=0.9",
@@ -71,7 +77,9 @@ def search_companies_by_name(name: str) -> list:
             if len(results) >= 20:
                 break
     except Exception:
-        pass
+        results = []
+    if not results:
+        results = _search_companies_by_name_from_gcis(name)
     return results
 
 
@@ -124,6 +132,10 @@ def scrape_company(ban: str) -> dict:
             time.sleep(1.2)
 
         if not disj:
+            fallback = _scrape_company_from_gcis_open_data(ban)
+            if fallback.get("公司名稱"):
+                fallback["_error"] = "findbiz 無法取得認證 token（disj），已改用經濟部商工開放資料"
+                return fallback
             result["_error"] = "無法取得認證 token（disj），請稍後再試"
             return result
 
@@ -172,6 +184,10 @@ def scrape_company(ban: str) -> dict:
         result["董監事任期"], result["董監事資料"] = _parse_directors(soup)
 
     except Exception as exc:
+        fallback = _scrape_company_from_gcis_open_data(ban)
+        if fallback.get("公司名稱"):
+            fallback["_error"] = f"findbiz 目前無法直接存取（{exc}），已改用經濟部商工開放資料"
+            return fallback
         result["_error"] = str(exc)
 
     return result
@@ -208,6 +224,122 @@ def _empty_result(ban: str) -> dict:
         "_snapshot_at": "",
         "_error": "",
     }
+
+
+def _gcis_request(api_url: str, filter_expr: str, top: int = 50) -> list:
+    try:
+        resp = requests.get(
+            api_url,
+            params={
+                "$filter": filter_expr,
+                "$format": "json",
+                "$skip": "0",
+                "$top": str(top),
+            },
+            headers=_HEADERS,
+            verify=False,
+            timeout=15,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def _format_gcis_date(value) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if re.fullmatch(r"\d{7}", text):
+        year = int(text[:3]) + 1911
+        return f"{year:04d}/{text[3:5]}/{text[5:7]}"
+    if re.fullmatch(r"\d{8}", text):
+        return f"{text[:4]}/{text[4:6]}/{text[6:8]}"
+    return text
+
+
+def _clean_gcis_value(value) -> str:
+    text = str(value or "").strip().replace("\u3000", " ")
+    text = re.sub(r"\s+", " ", text)
+    return "" if text in {"", "-", "－", "—", "None", "null"} else text
+
+
+def _search_companies_by_name_from_gcis(name: str) -> list:
+    keyword = str(name or "").strip()
+    if not keyword:
+        return []
+    items = _gcis_request(
+        GCIS_COMPANY_KEYWORD_URL,
+        f"Company_Name like {keyword} and Company_Status eq 01",
+        top=20,
+    )
+    results = []
+    seen = set()
+    for item in items:
+        ban_val = _clean_gcis_value(item.get("Business_Accounting_NO"))
+        co_name = _clean_gcis_value(item.get("Company_Name"))
+        if not re.fullmatch(r"\d{8}", ban_val or "") or not co_name or ban_val in seen:
+            continue
+        seen.add(ban_val)
+        results.append({"ban": ban_val, "name": co_name})
+        if len(results) >= 20:
+            break
+    return results
+
+
+def _scrape_company_from_gcis_open_data(ban: str) -> dict:
+    normalized_ban = str(ban or "").strip()
+    result = _empty_result(normalized_ban)
+    if not re.fullmatch(r"\d{8}", normalized_ban):
+        return result
+
+    profile_items = _gcis_request(
+        GCIS_COMPANY_PROFILE_URL,
+        f"Business_Accounting_NO eq {normalized_ban}",
+        top=1,
+    )
+    if not profile_items:
+        return result
+
+    profile = profile_items[0]
+    result["統一編號"] = _clean_gcis_value(profile.get("Business_Accounting_NO")) or normalized_ban
+    result["公司名稱"] = _clean_gcis_value(profile.get("Company_Name"))
+    result["登記現況"] = _clean_gcis_value(profile.get("Company_Status_Desc"))
+    result["資本總額(元)"] = _clean_gcis_value(profile.get("Capital_Stock_Amount"))
+    result["實收資本額(元)"] = _clean_gcis_value(profile.get("Paid_In_Capital_Amount"))
+    result["代表人姓名"] = _clean_gcis_value(profile.get("Responsible_Name"))
+    result["公司所在地"] = _clean_gcis_value(profile.get("Company_Location"))
+    result["登記機關"] = _clean_gcis_value(profile.get("Register_Organization_Desc"))
+    result["核准設立日期"] = _format_gcis_date(profile.get("Company_Setup_Date"))
+    result["最後核准變更日期"] = _format_gcis_date(profile.get("Change_Of_Approval_Data"))
+
+    business_items = _gcis_request(
+        GCIS_COMPANY_BUSINESS_URL,
+        f"Business_Accounting_NO eq {normalized_ban}",
+        top=1,
+    )
+    if business_items:
+        businesses = business_items[0].get("Cmp_Business") or []
+        lines = []
+        if isinstance(businesses, list):
+            for item in businesses:
+                code = _clean_gcis_value(item.get("Business_Item"))
+                desc = _clean_gcis_value(item.get("Business_Item_Desc"))
+                if code and desc:
+                    lines.append(f"{code} {desc}")
+                elif desc:
+                    lines.append(desc)
+        result["所營事業"] = "\n".join(lines)
+
+    result["_detail_url"] = (
+        f"{GCIS_COMPANY_PROFILE_URL}?$filter=Business_Accounting_NO eq {normalized_ban}"
+        "&$format=json&$skip=0&$top=50"
+    )
+    result["_print_url"] = result["_detail_url"]
+    result["_share_url"] = result["_detail_url"]
+    result["_snapshot_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return result
 
 
 def to_findbiz_snapshot_bytes(result: dict) -> bytes:

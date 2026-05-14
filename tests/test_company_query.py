@@ -6,6 +6,7 @@ from openpyxl import load_workbook
 import pandas as pd
 
 import company_query
+import findbiz_scraper
 
 
 class _FakeResponse:
@@ -148,6 +149,98 @@ class CompanyQueryTests(unittest.TestCase):
         self.assertEqual(result["市場別"], "上市(TWSE)")
         self.assertEqual(result["實際收盤日期"], "2026/05/13")
         self.assertIn("findbiz", result["備註"])
+
+    def test_scrape_company_falls_back_to_gcis_open_data(self):
+        def fake_get(url, **kwargs):
+            if "findbiz.nat.gov.tw" in url:
+                raise RuntimeError("403 Client Error")
+
+            class _JsonResponse:
+                def __init__(self, payload):
+                    self._payload = payload
+
+                def raise_for_status(self):
+                    return None
+
+                def json(self):
+                    return self._payload
+
+            if "5F64D864" in url:
+                return _JsonResponse([
+                    {
+                        "Business_Accounting_NO": "34051920",
+                        "Company_Status_Desc": "核准設立",
+                        "Company_Name": "台達電子工業股份有限公司",
+                        "Capital_Stock_Amount": 60000000000,
+                        "Paid_In_Capital_Amount": 24567776290,
+                        "Responsible_Name": "鄭平",
+                        "Company_Location": "桃園市龜山區山頂里興邦路31之1號",
+                        "Register_Organization_Desc": "經濟部商業發展署",
+                        "Company_Setup_Date": "0640820",
+                        "Change_Of_Approval_Data": "1150410",
+                    }
+                ])
+            if "236EE382" in url:
+                return _JsonResponse([
+                    {
+                        "Cmp_Business": [
+                            {"Business_Item": "CC01080", "Business_Item_Desc": "電子零組件製造業"},
+                        ]
+                    }
+                ])
+            return _JsonResponse([])
+
+        with patch("findbiz_scraper.requests.get", side_effect=fake_get):
+            result = findbiz_scraper.scrape_company("34051920")
+
+        self.assertEqual(result["統一編號"], "34051920")
+        self.assertEqual(result["公司名稱"], "台達電子工業股份有限公司")
+        self.assertEqual(result["代表人姓名"], "鄭平")
+        self.assertEqual(result["核准設立日期"], "1975/08/20")
+        self.assertIn("CC01080", result["所營事業"])
+        self.assertIn("data.gcis.nat.gov.tw", result["_share_url"])
+
+    def test_search_company_name_falls_back_to_gcis_open_data(self):
+        def fake_get(url, **kwargs):
+            if "findbiz.nat.gov.tw" in url:
+                raise RuntimeError("403 Client Error")
+
+            class _JsonResponse:
+                def raise_for_status(self):
+                    return None
+
+                def json(self):
+                    return [
+                        {
+                            "Business_Accounting_NO": "03793407",
+                            "Company_Name": "臺灣中小企業銀行股份有限公司",
+                        }
+                    ]
+
+            return _JsonResponse()
+
+        with patch("findbiz_scraper.requests.get", side_effect=fake_get):
+            results = findbiz_scraper.search_companies_by_name("臺灣中小企業銀行")
+
+        self.assertEqual(results, [{"ban": "03793407", "name": "臺灣中小企業銀行股份有限公司"}])
+
+    def test_query_by_name_can_resolve_official_short_name(self):
+        profile_entry = {
+            "stock_no": "2834",
+            "name": "臺灣中小企業銀行股份有限公司",
+            "short_name": "臺企銀",
+            "uid": "03793407",
+            "market": "TWSE",
+            "raw": {},
+        }
+        company_query._OFFICIAL_BY_STOCK["2834"] = profile_entry
+        company_query._OFFICIAL_BY_UID["03793407"] = profile_entry
+
+        with patch("company_query.query_by_uid", return_value={"統一編號": "03793407", "公司名稱": "臺灣中小企業銀行股份有限公司"}):
+            result = company_query.query_by_name("台企銀", 2026, price_date="2026/05/13")
+
+        self.assertEqual(result["統一編號"], "03793407")
+        self.assertEqual(result["公司名稱"], "臺灣中小企業銀行股份有限公司")
 
 
 if __name__ == "__main__":

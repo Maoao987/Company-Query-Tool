@@ -107,6 +107,7 @@ def get_cnyes_stock_url(stock_no: str) -> str:
 
 def _normalize_company_name(name: str) -> str:
     text = str(name or "").strip()
+    text = text.replace("台", "臺")
     text = re.sub(r"[　\s\-\(\)（）\.．,，]", "", text)
     text = re.sub(r"(股份有限公司|有限公司|公司|企業)$", "", text)
     return text
@@ -741,6 +742,56 @@ def _score_stock_candidate(candidate_name: str, target_name: str) -> int:
     return score
 
 
+def search_company_candidates(company_name: str, limit: int = 20) -> list[dict]:
+    name = str(company_name or "").strip()
+    if not name:
+        return []
+
+    load_stock_profiles()
+    target_norm = _normalize_company_name(name)
+    candidates: list[tuple[int, dict]] = []
+    seen = set()
+
+    for entry in _OFFICIAL_BY_STOCK.values():
+        uid = str(entry.get("uid", "") or "").strip()
+        if not re.fullmatch(r"\d{8}", uid) or uid in seen:
+            continue
+        full_name = str(entry.get("name", "") or "").strip()
+        short_name = str(entry.get("short_name", "") or "").strip()
+        full_norm = _normalize_company_name(full_name)
+        short_norm = _normalize_company_name(short_name)
+
+        score = 0
+        if name == full_name:
+            score = max(score, 140)
+        if name == short_name:
+            score = max(score, 130)
+        if target_norm and target_norm == full_norm:
+            score = max(score, 120)
+        if target_norm and target_norm == short_norm:
+            score = max(score, 115)
+        if len(target_norm) >= 3 and full_norm and target_norm in full_norm:
+            score = max(score, 70)
+        if len(target_norm) >= 3 and short_norm and target_norm in short_norm:
+            score = max(score, 65)
+        if not score:
+            continue
+
+        seen.add(uid)
+        candidates.append((score, {"ban": uid, "name": full_name or short_name}))
+
+    for item in search_companies_by_name(name):
+        uid = str(item.get("ban", "") or "").strip()
+        co_name = str(item.get("name", "") or "").strip()
+        if not re.fullmatch(r"\d{8}", uid) or not co_name or uid in seen:
+            continue
+        seen.add(uid)
+        candidates.append((_score_stock_candidate(co_name, name), {"ban": uid, "name": co_name}))
+
+    candidates.sort(key=lambda item: (item[0], item[1].get("ban", "")), reverse=True)
+    return [item for _, item in candidates[:limit]]
+
+
 def query_by_name(company_name: str, year: int, price_date=None) -> dict:
     result = {col: "" for col in RESULT_COLUMNS}
     result["年底收盤日期"] = ""
@@ -753,7 +804,7 @@ def query_by_name(company_name: str, year: int, price_date=None) -> dict:
         result["備註"] = "請輸入公司名稱"
         return result
 
-    candidates = search_companies_by_name(name)
+    candidates = search_company_candidates(name)
     if not candidates:
         result["備註"] = "查無符合公司名稱，請確認名稱或改用統一編號/股票代號查詢"
         return result
@@ -810,7 +861,7 @@ def query_by_uid(unified_id: str, year: int, price_date=None) -> dict:
     # Step 1: findbiz 公司登記資料
     official_entry = _OFFICIAL_BY_UID.get(uid)
     fb = scrape_company(uid)
-    if fb.get("_error"):
+    if fb.get("_error") and not fb.get("公司名稱"):
         if official_entry:
             return _build_official_profile_result(
                 official_entry,
@@ -845,10 +896,16 @@ def query_by_uid(unified_id: str, year: int, price_date=None) -> dict:
 
     stable_findbiz_url = fb.get("_share_url", "") or f"{FIND_BIZ_HOME_URL}?banNo={uid}"
     result["登記資料來源網址"] = stable_findbiz_url
-    result["公司登記資料說明"] = "查看 findbiz 官方頁面"
+    result["公司登記資料說明"] = (
+        "查看經濟部商工開放資料"
+        if "data.gcis.nat.gov.tw" in stable_findbiz_url
+        else "查看 findbiz 官方頁面"
+    )
     result["列印連結"]         = stable_findbiz_url
     result["_detail_html"]    = fb.get("_detail_html", "")
     result["_snapshot_at"]    = fb.get("_snapshot_at", "")
+    if fb.get("_error"):
+        result["備註"] = fb["_error"]
 
     # Step 2: 尋找股票代號（ISIN）
     # 只比對 4~6 碼的普通股（過濾權證 6 碼含字母的代號）
