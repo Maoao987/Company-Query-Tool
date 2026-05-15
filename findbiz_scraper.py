@@ -140,7 +140,7 @@ def scrape_company(ban: str) -> dict:
         if not disj:
             fallback = _scrape_company_from_gcis_open_data(ban)
             if fallback.get("公司名稱"):
-                fallback["_error"] = "findbiz 無法取得認證 token（disj），已改用經濟部商工開放資料"
+                fallback["_technical_error"] = "findbiz 無法取得認證 token（disj）"
                 return fallback
             result["_error"] = "無法取得認證 token（disj），請稍後再試"
             return result
@@ -192,7 +192,7 @@ def scrape_company(ban: str) -> dict:
     except Exception as exc:
         fallback = _scrape_company_from_gcis_open_data(ban)
         if fallback.get("公司名稱"):
-            fallback["_error"] = f"findbiz 目前無法直接存取（{exc}），已改用經濟部商工開放資料"
+            fallback["_technical_error"] = str(exc)
             return fallback
         result["_error"] = str(exc)
 
@@ -228,6 +228,9 @@ def _empty_result(ban: str) -> dict:
         "_share_url": "",
         "_detail_html": "",
         "_snapshot_at": "",
+        "_registry_fallback": "",
+        "_registry_notice": "",
+        "_technical_error": "",
         "_error": "",
     }
 
@@ -345,6 +348,8 @@ def _scrape_company_from_gcis_open_data(ban: str) -> dict:
     result["_print_url"] = findbiz_share_url(normalized_ban)
     result["_share_url"] = findbiz_share_url(normalized_ban)
     result["_snapshot_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    result["_registry_fallback"] = "gcis_open_data"
+    result["_registry_notice"] = "公司登記資料已由經濟部商工開放資料補齊"
     return result
 
 

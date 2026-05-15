@@ -433,7 +433,7 @@ def _build_official_profile_result(entry: dict, year: int, price_date=None, note
     _populate_stock_result(result, stock_no, market, year, price_date=price_date, entry=entry)
     _append_note(
         result,
-        note or "findbiz 目前無法直接存取，已改用官方上市櫃公司基本資料補齊可取得欄位",
+        note or "公司登記資料暫時無法自動取得，已改用官方上市櫃公司基本資料補齊可取得欄位",
     )
     _mark_registry_fields_not_provided(result)
     return result
@@ -888,7 +888,7 @@ def query_by_uid(unified_id: str, year: int, price_date=None) -> dict:
                 official_entry,
                 year,
                 price_date=price_date,
-                note=f"findbiz 目前無法直接存取（{fb['_error']}），已改用官方上市櫃公司基本資料補齊可取得欄位",
+                note="公司登記資料暫時無法自動取得，已改用官方上市櫃公司基本資料補齊可取得欄位",
             )
         result["備註"] = fb["_error"]
         return result
@@ -927,6 +927,8 @@ def query_by_uid(unified_id: str, year: int, price_date=None) -> dict:
     result["_snapshot_at"]    = fb.get("_snapshot_at", "")
     if fb.get("_error"):
         result["備註"] = fb["_error"]
+        _mark_registry_fields_not_provided(result)
+    elif fb.get("_registry_fallback"):
         _mark_registry_fields_not_provided(result)
 
     if official_entry:
@@ -1104,7 +1106,7 @@ def query_by_stock_no(stock_no: str, year: int, price_date=None) -> dict:
             entry,
             year,
             price_date=price_date,
-            note="findbiz 目前無法直接存取，已改用官方上市櫃公司基本資料補齊可取得欄位",
+            note="公司登記資料暫時無法自動取得，已改用官方上市櫃公司基本資料補齊可取得欄位",
         )
 
     _apply_security_metadata(result, entry)

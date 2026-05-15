@@ -155,7 +155,9 @@ class CompanyQueryTests(unittest.TestCase):
             "https://findbiz.nat.gov.tw/fts/query/QueryBar/queryInit.do?banNo=03793407",
         )
         self.assertNotIn("openapi", result["登記資料來源網址"])
-        self.assertIn("findbiz", result["備註"])
+        self.assertIn("公司登記資料暫時無法自動取得", result["備註"])
+        self.assertNotIn("403", result["備註"])
+        self.assertNotIn("Client Error", result["備註"])
 
     def test_scrape_company_falls_back_to_gcis_open_data(self):
         def fake_get(url, **kwargs):
@@ -209,6 +211,8 @@ class CompanyQueryTests(unittest.TestCase):
             result["_share_url"],
             "https://findbiz.nat.gov.tw/fts/query/QueryBar/queryInit.do?banNo=34051920",
         )
+        self.assertEqual(result["_registry_fallback"], "gcis_open_data")
+        self.assertEqual(result["_error"], "")
 
     def test_query_by_uid_merges_gcis_and_official_profile_without_raw_json_link(self):
         profile_entry = {
@@ -248,7 +252,7 @@ class CompanyQueryTests(unittest.TestCase):
                 "董監事資料": [],
                 "所營事業": "",
                 "_share_url": "https://findbiz.nat.gov.tw/fts/query/QueryBar/queryInit.do?banNo=16130388",
-                "_error": "findbiz 目前無法直接存取，已改用經濟部商工開放資料",
+                "_registry_fallback": "gcis_open_data",
             },
         ), patch("company_query.get_stock_price_on_or_before", return_value=("2026/05/13", "58.20")), \
            patch("company_query.get_dividends", return_value=[]):
@@ -263,6 +267,7 @@ class CompanyQueryTests(unittest.TestCase):
             "https://findbiz.nat.gov.tw/fts/query/QueryBar/queryInit.do?banNo=16130388",
         )
         self.assertNotIn("data.gcis.nat.gov.tw/od/data/api", result["登記資料來源網址"])
+        self.assertEqual(result["備註"], "")
 
     def test_search_company_name_falls_back_to_gcis_open_data(self):
         def fake_get(url, **kwargs):
