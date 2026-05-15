@@ -317,6 +317,11 @@ def _clean_profile_value(value) -> str:
     return "" if text in {"", "-", "－", "—", "N/A", "None", "null"} else text
 
 
+def _findbiz_query_url(uid: str) -> str:
+    normalized = str(uid or "").strip()
+    return f"{FIND_BIZ_HOME_URL}?banNo={normalized}" if re.fullmatch(r"\d{8}", normalized) else ""
+
+
 def _profile_value(entry: dict | None, *keys: str) -> str:
     if not entry:
         return ""
@@ -353,8 +358,10 @@ def _apply_official_company_profile(result: dict, entry: dict | None) -> None:
         return
 
     market = str(entry.get("market", "") or "").strip()
+    uid = str(entry.get("uid", "") or "").strip()
     _set_if_blank(result, "統一編號", entry.get("uid", ""))
     _set_if_blank(result, "公司名稱", entry.get("name") or entry.get("short_name", ""))
+    _set_if_blank(result, "章程所訂外文公司名稱", _profile_value(entry, "英文簡稱", "Symbol"))
     _set_if_blank(result, "代表人姓名", _profile_value(entry, "董事長", "Chairman"))
     _set_if_blank(result, "公司所在地", _profile_value(entry, "住址", "Address"))
     _set_if_blank(result, "核准設立日期", _format_profile_date(_profile_value(entry, "成立日期", "DateOfIncorporation")))
@@ -362,11 +369,24 @@ def _apply_official_company_profile(result: dict, entry: dict | None) -> None:
     _set_if_blank(result, "每股金額(元)", _profile_value(entry, "普通股每股面額", "ParValueOfCommonStock"))
     _set_if_blank(result, "已發行股份總數(股)", _profile_value(entry, "已發行普通股數或TDR原股發行股數", "IssueShares"))
 
-    source_url = COMPANY_PROFILE_URL_BY_MARKET.get(market, "")
+    findbiz_url = _findbiz_query_url(uid)
+    source_url = findbiz_url or COMPANY_PROFILE_URL_BY_MARKET.get(market, "")
     if source_url and not result.get("登記資料來源網址"):
-        result["公司登記資料說明"] = f"查看 {_profile_source_label(market)}"
+        result["公司登記資料說明"] = "查看 findbiz 官方頁面" if findbiz_url else f"查看 {_profile_source_label(market)}"
         result["登記資料來源網址"] = source_url
         result["列印連結"] = source_url
+
+
+def _mark_registry_fields_not_provided(result: dict) -> None:
+    for key in (
+        "股權狀況",
+        "複數表決權特別股",
+        "對於特定事項具否決權特別股",
+        "特別股董監選任限制",
+        "董監事任期",
+    ):
+        if not result.get(key):
+            result[key] = "開放資料未提供"
 
 
 def _populate_stock_result(result: dict, stock_no: str, market: str, year: int, price_date=None, entry: dict | None = None) -> None:
@@ -415,6 +435,7 @@ def _build_official_profile_result(entry: dict, year: int, price_date=None, note
         result,
         note or "findbiz 目前無法直接存取，已改用官方上市櫃公司基本資料補齊可取得欄位",
     )
+    _mark_registry_fields_not_provided(result)
     return result
 
 
@@ -906,6 +927,10 @@ def query_by_uid(unified_id: str, year: int, price_date=None) -> dict:
     result["_snapshot_at"]    = fb.get("_snapshot_at", "")
     if fb.get("_error"):
         result["備註"] = fb["_error"]
+        _mark_registry_fields_not_provided(result)
+
+    if official_entry:
+        _apply_official_company_profile(result, official_entry)
 
     # Step 2: 尋找股票代號（ISIN）
     # 只比對 4~6 碼的普通股（過濾權證 6 碼含字母的代號）

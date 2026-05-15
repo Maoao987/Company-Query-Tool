@@ -21,6 +21,7 @@ from bs4 import BeautifulSoup
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 BASE = "https://findbiz.nat.gov.tw"
+FIND_BIZ_QUERY_URL = f"{BASE}/fts/query/QueryBar/queryInit.do"
 GCIS_API_BASE = "https://data.gcis.nat.gov.tw/od/data/api"
 GCIS_COMPANY_PROFILE_API_ID = "5F64D864-61CB-4D0D-8AD9-492047CC1EA6"
 GCIS_COMPANY_BUSINESS_API_ID = "236EE382-4942-41A9-BD03-CA0709025E7C"
@@ -32,6 +33,11 @@ _HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     "Accept-Language": "zh-TW,zh;q=0.9",
 }
+
+
+def findbiz_share_url(ban: str) -> str:
+    normalized_ban = str(ban or "").strip()
+    return f"{FIND_BIZ_QUERY_URL}?banNo={normalized_ban}" if normalized_ban else FIND_BIZ_QUERY_URL
 
 
 # ─── 主要公開函式 ────────────────────────────────────────────────
@@ -336,8 +342,8 @@ def _scrape_company_from_gcis_open_data(ban: str) -> dict:
         f"{GCIS_COMPANY_PROFILE_URL}?$filter=Business_Accounting_NO eq {normalized_ban}"
         "&$format=json&$skip=0&$top=50"
     )
-    result["_print_url"] = result["_detail_url"]
-    result["_share_url"] = result["_detail_url"]
+    result["_print_url"] = findbiz_share_url(normalized_ban)
+    result["_share_url"] = findbiz_share_url(normalized_ban)
     result["_snapshot_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     return result
 

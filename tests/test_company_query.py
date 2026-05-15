@@ -148,6 +148,13 @@ class CompanyQueryTests(unittest.TestCase):
         self.assertEqual(result["股票代號"], "2834")
         self.assertEqual(result["市場別"], "上市(TWSE)")
         self.assertEqual(result["實際收盤日期"], "2026/05/13")
+        self.assertEqual(result["股權狀況"], "開放資料未提供")
+        self.assertEqual(result["公司登記資料說明"], "查看 findbiz 官方頁面")
+        self.assertEqual(
+            result["登記資料來源網址"],
+            "https://findbiz.nat.gov.tw/fts/query/QueryBar/queryInit.do?banNo=03793407",
+        )
+        self.assertNotIn("openapi", result["登記資料來源網址"])
         self.assertIn("findbiz", result["備註"])
 
     def test_scrape_company_falls_back_to_gcis_open_data(self):
@@ -198,7 +205,64 @@ class CompanyQueryTests(unittest.TestCase):
         self.assertEqual(result["代表人姓名"], "鄭平")
         self.assertEqual(result["核准設立日期"], "1975/08/20")
         self.assertIn("CC01080", result["所營事業"])
-        self.assertIn("data.gcis.nat.gov.tw", result["_share_url"])
+        self.assertEqual(
+            result["_share_url"],
+            "https://findbiz.nat.gov.tw/fts/query/QueryBar/queryInit.do?banNo=34051920",
+        )
+
+    def test_query_by_uid_merges_gcis_and_official_profile_without_raw_json_link(self):
+        profile_entry = {
+            "stock_no": "3016",
+            "name": "嘉晶電子股份有限公司",
+            "short_name": "嘉晶",
+            "uid": "16130388",
+            "market": "TWSE",
+            "raw": {
+                "英文簡稱": "EPi",
+                "普通股每股面額": "新台幣 10.0000元",
+                "已發行普通股數或TDR原股發行股數": "288541819",
+            },
+        }
+        company_query._OFFICIAL_BY_STOCK["3016"] = profile_entry
+        company_query._OFFICIAL_BY_UID["16130388"] = profile_entry
+        company_query._ISIN_BY_STOCK["3016"] = {
+            **profile_entry,
+            "isin_code": "TW0003016002",
+            "issue_country": "台灣",
+            "security_type": "股票",
+        }
+
+        with patch(
+            "company_query.scrape_company",
+            return_value={
+                "統一編號": "16130388",
+                "登記現況": "核准設立",
+                "公司名稱": "嘉晶電子股份有限公司",
+                "資本總額(元)": "5000000000",
+                "實收資本額(元)": "2885418190",
+                "代表人姓名": "徐建華",
+                "公司所在地": "新竹科學園區新竹市東區篤行一路10號",
+                "登記機關": "國家科學及技術委員會新竹科學園區管理局",
+                "核准設立日期": "1998/11/09",
+                "最後核准變更日期": "2026/01/20",
+                "董監事資料": [],
+                "所營事業": "",
+                "_share_url": "https://findbiz.nat.gov.tw/fts/query/QueryBar/queryInit.do?banNo=16130388",
+                "_error": "findbiz 目前無法直接存取，已改用經濟部商工開放資料",
+            },
+        ), patch("company_query.get_stock_price_on_or_before", return_value=("2026/05/13", "58.20")), \
+           patch("company_query.get_dividends", return_value=[]):
+            result = company_query.query_by_uid("16130388", 2026, price_date="2026/05/13")
+
+        self.assertEqual(result["每股金額(元)"], "新台幣 10.0000元")
+        self.assertEqual(result["已發行股份總數(股)"], "288541819")
+        self.assertEqual(result["章程所訂外文公司名稱"], "EPi")
+        self.assertEqual(result["股權狀況"], "開放資料未提供")
+        self.assertEqual(
+            result["登記資料來源網址"],
+            "https://findbiz.nat.gov.tw/fts/query/QueryBar/queryInit.do?banNo=16130388",
+        )
+        self.assertNotIn("data.gcis.nat.gov.tw/od/data/api", result["登記資料來源網址"])
 
     def test_search_company_name_falls_back_to_gcis_open_data(self):
         def fake_get(url, **kwargs):
