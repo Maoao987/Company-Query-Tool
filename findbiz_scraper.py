@@ -13,10 +13,16 @@ import base64
 import re
 import time
 from datetime import datetime
+from urllib.parse import urljoin
 
 import requests
 import urllib3
 from bs4 import BeautifulSoup
+
+try:
+    from curl_cffi import requests as curl_requests
+except Exception:  # pragma: no cover - optional browser-grade HTTP client
+    curl_requests = None
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -38,6 +44,12 @@ _HEADERS = {
 def findbiz_share_url(ban: str) -> str:
     normalized_ban = str(ban or "").strip()
     return f"{FIND_BIZ_QUERY_URL}?banNo={normalized_ban}" if normalized_ban else FIND_BIZ_QUERY_URL
+
+
+def _new_findbiz_session():
+    if curl_requests is not None:
+        return curl_requests.Session(impersonate="chrome")
+    return requests.Session()
 
 
 # ─── 主要公開函式 ────────────────────────────────────────────────
@@ -108,17 +120,18 @@ def scrape_company(ban: str) -> dict:
     result = _empty_result(ban)
 
     try:
-        s = requests.Session()
+        s = _new_findbiz_session()
         s.headers.update(_HEADERS)
 
         # Step 1: 首頁取得 session
-        r0 = s.get(f"{BASE}/fts/query/QueryBar/queryInit.do", verify=False, timeout=12)
+        r0 = s.get(f"{BASE}/fts/query/QueryBar/queryInit.do?banNo={ban}", verify=False, timeout=12)
         r0.raise_for_status()
-        form_action = BASE + BeautifulSoup(r0.content, "html.parser").find("form")["action"]
+        form_action = urljoin(BASE, BeautifulSoup(r0.content, "html.parser").find("form")["action"])
         time.sleep(0.4)
 
         # Step 2: 搜尋取得 disj（最多重試 3 次）
         disj = None
+        detail_url = ""
         for attempt in range(3):
             r1 = s.post(
                 form_action,
@@ -128,9 +141,13 @@ def scrape_company(ban: str) -> dict:
                 verify=False,
                 timeout=12,
             )
-            all_hrefs = " ".join(
-                a.get("href", "") for a in BeautifulSoup(r1.content, "html.parser").find_all("a", href=True)
-            )
+            soup1 = BeautifulSoup(r1.content, "html.parser")
+            for a in soup1.find_all("a", href=True):
+                href = re.sub(r"[\r\n\s]+", "", a.get("href", ""))
+                if "QueryCmpyDetail" in href and f"banNo={ban}" in href:
+                    detail_url = urljoin(BASE, href)
+                    break
+            all_hrefs = " ".join(a.get("href", "") for a in soup1.find_all("a", href=True))
             m = re.search(r"disj=([A-Fa-f0-9]{20,})", all_hrefs)
             if m:
                 disj = m.group(1)
@@ -146,11 +163,12 @@ def scrape_company(ban: str) -> dict:
             return result
 
         # Step 3: 組 detail URL
-        oid = base64.b64encode(("HC" + ban).encode()).decode()
-        detail_url = (
-            f"{BASE}/fts/query/QueryCmpyDetail/queryCmpyDetail.do"
-            f"?objectId={oid}&banNo={ban}&disj={disj}&fhl=zh_TW"
-        )
+        if not detail_url:
+            oid = base64.b64encode(("HC" + ban).encode()).decode()
+            detail_url = (
+                f"{BASE}/fts/query/QueryCmpyDetail/queryCmpyDetail.do"
+                f"?objectId={oid}&banNo={ban}&disj={disj}&fhl=zh_TW"
+            )
         print_url = detail_url
         share_url = f"{BASE}/fts/query/QueryBar/queryInit.do?banNo={ban}"
 

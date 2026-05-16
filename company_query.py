@@ -379,6 +379,9 @@ def _apply_official_company_profile(result: dict, entry: dict | None) -> None:
 
 def _mark_registry_fields_not_provided(result: dict) -> None:
     for key in (
+        "章程所訂外文公司名稱",
+        "每股金額(元)",
+        "已發行股份總數(股)",
         "股權狀況",
         "複數表決權特別股",
         "對於特定事項具否決權特別股",
@@ -387,6 +390,17 @@ def _mark_registry_fields_not_provided(result: dict) -> None:
     ):
         if not result.get(key):
             result[key] = "開放資料未提供"
+
+
+def _mark_findbiz_blank_registry_fields(result: dict) -> None:
+    for key in (
+        "章程所訂外文公司名稱",
+        "每股金額(元)",
+        "已發行股份總數(股)",
+        "股權狀況",
+    ):
+        if not result.get(key):
+            result[key] = "未登記"
 
 
 def _populate_stock_result(result: dict, stock_no: str, market: str, year: int, price_date=None, entry: dict | None = None) -> None:
@@ -927,12 +941,14 @@ def query_by_uid(unified_id: str, year: int, price_date=None) -> dict:
     result["_snapshot_at"]    = fb.get("_snapshot_at", "")
     if fb.get("_error"):
         result["備註"] = fb["_error"]
-        _mark_registry_fields_not_provided(result)
-    elif fb.get("_registry_fallback"):
-        _mark_registry_fields_not_provided(result)
 
     if official_entry:
         _apply_official_company_profile(result, official_entry)
+
+    if fb.get("_error") or fb.get("_registry_fallback"):
+        _mark_registry_fields_not_provided(result)
+    else:
+        _mark_findbiz_blank_registry_fields(result)
 
     # Step 2: 尋找股票代號（ISIN）
     # 只比對 4~6 碼的普通股（過濾權證 6 碼含字母的代號）

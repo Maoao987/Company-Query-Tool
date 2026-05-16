@@ -10,9 +10,18 @@ import findbiz_scraper
 
 
 class _FakeResponse:
-    def __init__(self, text):
+    def __init__(self, text, url="https://example.test/"):
         self.text = text
         self.encoding = "utf-8"
+        self.url = url
+        self.status_code = 200
+
+    @property
+    def content(self):
+        return self.text.encode(self.encoding or "utf-8")
+
+    def raise_for_status(self):
+        return None
 
 
 class CompanyQueryTests(unittest.TestCase):
@@ -160,6 +169,13 @@ class CompanyQueryTests(unittest.TestCase):
         self.assertNotIn("Client Error", result["備註"])
 
     def test_scrape_company_falls_back_to_gcis_open_data(self):
+        class _BlockedFindbizSession:
+            def __init__(self):
+                self.headers = {}
+
+            def get(self, *args, **kwargs):
+                raise RuntimeError("403 Client Error")
+
         def fake_get(url, **kwargs):
             if "findbiz.nat.gov.tw" in url:
                 raise RuntimeError("403 Client Error")
@@ -199,7 +215,8 @@ class CompanyQueryTests(unittest.TestCase):
                 ])
             return _JsonResponse([])
 
-        with patch("findbiz_scraper.requests.get", side_effect=fake_get):
+        with patch("findbiz_scraper._new_findbiz_session", return_value=_BlockedFindbizSession()), \
+             patch("findbiz_scraper.requests.get", side_effect=fake_get):
             result = findbiz_scraper.scrape_company("34051920")
 
         self.assertEqual(result["統一編號"], "34051920")
@@ -213,6 +230,56 @@ class CompanyQueryTests(unittest.TestCase):
         )
         self.assertEqual(result["_registry_fallback"], "gcis_open_data")
         self.assertEqual(result["_error"], "")
+
+    def test_scrape_company_uses_findbiz_browser_session_for_share_fields(self):
+        class _FindbizSession:
+            def __init__(self):
+                self.headers = {}
+
+            def get(self, url, **kwargs):
+                if "QueryBar" in url:
+                    return _FakeResponse(
+                        '<form action="/fts/query/QueryList/queryList.do;jsessionid=ABC"></form>',
+                        url=url,
+                    )
+                if "QueryCmpyDetail" in url:
+                    return _FakeResponse(
+                        """
+                        <html><head><title>商工登記公示資料-公司資料</title></head><body>
+                        <table>
+                          <tr><td class="txt_td">統一編號</td><td>04457563</td></tr>
+                          <tr><td class="txt_td">公司名稱</td><td>嘉發實業工廠股份有限公司</td></tr>
+                          <tr><td class="txt_td">章程所訂外文公司名稱</td><td>CHIA FAR INDUSTRIAL FACTORY CO., LTD.</td></tr>
+                          <tr><td class="txt_td">資本總額(元)</td><td>1,350,500,000</td></tr>
+                          <tr><td class="txt_td">實收資本額(元)</td><td>1,350,500,000</td></tr>
+                          <tr><td class="txt_td">每股金額(元)</td><td>10</td></tr>
+                          <tr><td class="txt_td">已發行股份總數(股)</td><td>135,050,000</td></tr>
+                          <tr><td class="txt_td">代表人姓名</td><td>楊孫智</td></tr>
+                          <tr><td class="txt_td">登記現況</td><td>核准設立</td></tr>
+                        </table>
+                        </body></html>
+                        """,
+                        url=url,
+                    )
+                raise RuntimeError(f"unexpected GET {url}")
+
+            def post(self, url, **kwargs):
+                return _FakeResponse(
+                    """
+                    <a href="/fts/query/QueryCmpyDetail/queryCmpyDetail.do?objectId=SEMwNDQ1NzU2Mw==\r
+                    &banNo=04457563&disj=ABCDEF1234567890ABCDEF1234567890&fhl=zh_TW">
+                    嘉發實業工廠股份有限公司</a>
+                    """,
+                    url=url,
+                )
+
+        with patch("findbiz_scraper._new_findbiz_session", return_value=_FindbizSession()):
+            result = findbiz_scraper.scrape_company("04457563")
+
+        self.assertEqual(result["章程所訂外文公司名稱"], "CHIA FAR INDUSTRIAL FACTORY CO., LTD.")
+        self.assertEqual(result["每股金額(元)"], "10")
+        self.assertEqual(result["已發行股份總數(股)"], "135,050,000")
+        self.assertEqual(result["_registry_fallback"], "")
 
     def test_query_by_uid_merges_gcis_and_official_profile_without_raw_json_link(self):
         profile_entry = {
@@ -268,6 +335,30 @@ class CompanyQueryTests(unittest.TestCase):
         )
         self.assertNotIn("data.gcis.nat.gov.tw/od/data/api", result["登記資料來源網址"])
         self.assertEqual(result["備註"], "")
+
+    def test_query_by_uid_marks_blank_findbiz_foreign_name_as_not_registered(self):
+        with patch("company_query.load_isin"), patch("company_query.load_stock_profiles"), patch(
+            "company_query.scrape_company",
+            return_value={
+                "統一編號": "73659184",
+                "登記現況": "核准設立",
+                "股權狀況": "",
+                "公司名稱": "政義實業股份有限公司",
+                "章程所訂外文公司名稱": "",
+                "資本總額(元)": "29,000,000",
+                "實收資本額(元)": "29,000,000",
+                "每股金額(元)": "1,000",
+                "已發行股份總數(股)": "29,000",
+                "代表人姓名": "劉辰義",
+                "_share_url": "https://findbiz.nat.gov.tw/fts/query/QueryBar/queryInit.do?banNo=73659184",
+            },
+        ):
+            result = company_query.query_by_uid("73659184", 2026, price_date="2026/05/13")
+
+        self.assertEqual(result["章程所訂外文公司名稱"], "未登記")
+        self.assertEqual(result["股權狀況"], "未登記")
+        self.assertEqual(result["每股金額(元)"], "1,000")
+        self.assertEqual(result["已發行股份總數(股)"], "29,000")
 
     def test_search_company_name_falls_back_to_gcis_open_data(self):
         def fake_get(url, **kwargs):
